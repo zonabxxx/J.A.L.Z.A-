@@ -243,7 +243,14 @@ export default function Chat({
                   {msg.content && (
                     <div className="text-xs text-zinc-400 font-medium">{msg.content.length > 200 ? "" : msg.content}</div>
                   )}
-                  <EmailCards emails={msg.emails} mailbox={msg.mailbox} />
+                  <EmailCards
+                    emails={msg.emails}
+                    mailbox={msg.mailbox}
+                    onMailboxChange={(mb) => {
+                      const cmd = mb === "adsun" ? "adsun maily" : mb === "juraj" ? "juraj maily" : "moje maily";
+                      onSend(cmd);
+                    }}
+                  />
                   {msg.content && msg.content.length > 200 && (
                     <div className="mt-3 pt-3 border-t border-zinc-700/50 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
                       {msg.content}

@@ -202,24 +202,28 @@ export function useChat(activeAgent: Agent | null) {
 
   const detectMailbox = (text: string): string => {
     const l = text.toLowerCase();
-    if (/adsun|info@adsun|firemn|firma/.test(l)) return "adsun";
-    if (/juraj@|juraj\s*adsun|moj\s*pracovn/.test(l)) return "juraj";
+    if (/adsun|info@adsun|firemn[ýeé]|firma/.test(l)) return "adsun";
+    if (/juraj@|juraj\s*(adsun|mail)|moj\s*pracovn/.test(l)) return "juraj";
+    if (/osobn[áeé]|moje\s*mail|gmail|personal/.test(l)) return "personal";
     return "personal";
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const formatEmailList = (emails: any[]): string => {
-    if (!emails || emails.length === 0) return "";
-    return emails
-      .map(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (e: any, i: number) =>
-          `${i + 1}. **Od:** ${e.from || e.sender?.emailAddress?.address || "?"}\n` +
-          `   **Predmet:** ${e.subject}\n` +
-          `   **Dátum:** ${e.date || e.receivedDateTime || "?"}\n` +
-          `   ${e.snippet || e.bodyPreview ? `**Náhľad:** ${(e.snippet || e.bodyPreview || "").slice(0, 150)}` : ""}`
-      )
-      .join("\n\n");
+  const toEmailData = (e: any): EmailData => {
+    // IMAP: from="Name <email>", snippet
+    // Graph: sender="Name", sender_email="email", body="...", is_read
+    const from = e.from
+      || (e.sender_email ? `${e.sender || ""} <${e.sender_email}>`.trim() : e.sender)
+      || e.sender?.emailAddress?.address
+      || "?";
+    return {
+      from,
+      subject: e.subject || "(bez predmetu)",
+      date: e.date || e.receivedDateTime || "",
+      snippet: e.snippet || e.bodyPreview || e.body?.slice?.(0, 200) || "",
+      id: e.id || e.messageId || undefined,
+      unread: e.isRead === false || e.is_read === false,
+    };
   };
 
   const showEmailPreview = (
@@ -342,14 +346,7 @@ export function useChat(activeAgent: Agent | null) {
           emailReply(`Nenašiel som žiadne emaily pre: "${query}"`, route, updatedMessages, convId);
           return;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const emailCards: EmailData[] = emails.map((e: any) => ({
-          from: e.from || e.sender?.emailAddress?.address || "?",
-          subject: e.subject || "(bez predmetu)",
-          date: e.date || e.receivedDateTime || "",
-          snippet: e.snippet || e.bodyPreview || "",
-          id: e.id || e.messageId || undefined,
-        }));
+        const emailCards: EmailData[] = emails.map(toEmailData);
         emailReply(`Výsledky hľadania "${query}":`, route, updatedMessages, convId, { emails: emailCards, mailbox });
       } catch { emailReply("Nepodarilo sa vyhľadať emaily.", route, updatedMessages, convId); }
       return;
@@ -378,13 +375,7 @@ export function useChat(activeAgent: Agent | null) {
           const readRes = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "read", mailbox, id: target.id }) });
           const detail = await readRes.json();
           const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
-          const sender = target.from || target.sender?.emailAddress?.address || "?";
-          const emailCard: EmailData[] = [{
-            from: sender,
-            subject: target.subject || "(bez predmetu)",
-            date: target.date || target.receivedDateTime || "",
-            snippet: bodyText.slice(0, 200),
-          }];
+          const emailCard: EmailData[] = [toEmailData({ ...target, body: bodyText })];
           emailReply(bodyText, route, updatedMessages, convId, { emails: emailCard, mailbox });
         } else {
           emailReply(`Email č. ${num} neexistuje. Najprv si nechaj zobraziť maily.`, route, updatedMessages, convId);
@@ -402,15 +393,7 @@ export function useChat(activeAgent: Agent | null) {
       const emails = data.emails || [];
       if (emails.length === 0) { emailReply(today ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.", route, updatedMessages, convId); return; }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const emailCards: EmailData[] = emails.map((e: any) => ({
-        from: e.from || e.sender?.emailAddress?.address || "?",
-        subject: e.subject || "(bez predmetu)",
-        date: e.date || e.receivedDateTime || "",
-        snippet: e.snippet || e.bodyPreview || "",
-        id: e.id || e.messageId || undefined,
-        unread: e.isRead === false,
-      }));
+      const emailCards: EmailData[] = emails.map(toEmailData);
       emailReply("", route, updatedMessages, convId, { emails: emailCards, mailbox });
     } catch {
       emailReply("Nepodarilo sa načítať emaily. Skontroluj pripojenie.", route, updatedMessages, convId);
