@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
-import { GEMINI_API_KEY, GEMINI_MODEL } from "@/lib/config";
+import { GEMINI_API_KEY } from "@/lib/config";
+import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
 
-export async function POST(req: NextRequest) {
-  const { prompt, systemPrompt } = await req.json();
+const GEMINI_MODEL = "gemini-2.0-flash";
+const OLLAMA_MODEL = "jalza";
 
-  if (!GEMINI_API_KEY) {
-    return Response.json({ error: "Gemini API key not configured" }, { status: 500 });
-  }
+async function tryGemini(
+  prompt: string,
+  systemPrompt?: string
+): Promise<string | null> {
+  if (!GEMINI_API_KEY) return null;
 
   const contents = [];
   if (systemPrompt) {
@@ -23,27 +26,65 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents,
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 1024,
-          },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(10000),
       }
     );
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      return Response.json({ error: `Gemini ${res.status}: ${err}` }, { status: 502 });
-    }
-
+    if (!res.ok) return null;
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return Response.json({ text });
-  } catch (e) {
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  } catch {
+    return null;
+  }
+}
+
+async function tryOllama(
+  prompt: string,
+  systemPrompt?: string
+): Promise<string | null> {
+  const messages = [];
+  if (systemPrompt) {
+    messages.push({ role: "system", content: systemPrompt });
+  }
+  messages.push({ role: "user", content: prompt });
+
+  try {
+    const res = await fetch(getOllamaUrl("/api/chat"), {
+      method: "POST",
+      headers: ollamaHeaders(),
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        messages,
+        stream: false,
+        options: { temperature: 0.3 },
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.message?.content || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const { prompt, systemPrompt } = await req.json();
+
+  // Try Gemini first, fall back to Ollama
+  let text = await tryGemini(prompt, systemPrompt);
+
+  if (!text) {
+    text = await tryOllama(prompt, systemPrompt);
+  }
+
+  if (!text) {
     return Response.json(
-      { error: e instanceof Error ? e.message : "Gemini timeout" },
+      { error: "Ani Gemini ani Ollama nie sú dostupné" },
       { status: 502 }
     );
   }
+
+  return Response.json({ text });
 }
