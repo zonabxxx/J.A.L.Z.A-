@@ -162,18 +162,32 @@ export function useChat(activeAgent: Agent | null) {
 
     // ── SEND EMAIL ──
     if (isSend && !isReply) {
-      const classifyPrompt = `Si emailový asistent J.A.L.Z.A. Používateľ chce poslať email.
-Analyzuj jeho správu a extrahuj údaje. Vieš o používateľovi:
-- Meno: Juraj Martinkovych
-- Firma: ADSUN s.r.o., Pezinok — tím: Juraj Chlepko (riaditeľ), Jozef Tomášek (inovácie), Simona Jurčíková (účtovníctvo), Myška (grafička), Matej Šejc (obchodník)
-- Email: juraj@adsun.sk
+      const classifyPrompt = `Si emailový asistent. Používateľ ti HOVORÍ hlasom — text je zo speech-to-text a môže byť skomolený/chybný. Musíš pochopiť ZÁMER.
 
-Z kontextu odhadni emailovú adresu ak používateľ povie meno (napr. "Jurajovi" = juraj@adsun.sk).
+ZNÁME KONTAKTY A ADRESY:
+- Juraj Martinkovych (vlastník) = juraj@adsun.sk
+- ADSUN s.r.o. (firma) = info@adsun.sk
+- "sám sebe" / "mne" / "na moj mail" = juraj@adsun.sk
+- Juraj Chlepko (riaditeľ) = riaditeľ ADSUN
+- Jozef Tomášek (inovácie), Simona Jurčíková (účtovníctvo), Myška (grafička), Matej Šejc (obchodník)
 
-Ak máš všetky údaje (komu, predmet, text), odpovedz PRESNE v tomto JSON formáte:
-{"action":"send","to":"email@example.com","subject":"Predmet","body":"Text emailu","mailbox":"${mailbox}"}
+TYPICKÉ STT CHYBY (rozpoznaj ich):
+- "adresu sk" / "adresa sk" / "adresu.sk" → adsun.sk
+- "at sign" / "zavináč" / "@" / "na" (v kontexte emailu) → @
+- "juraj adresu sk" → juraj@adsun.sk
+- "info adresu sk" → info@adsun.sk
+- "sam sebe" / "sám sebe" / "na moj mail" → juraj@adsun.sk
+- "slnko" ak nedáva zmysel → pravdepodobne STT chyba, ignoruj
 
-Ak niečo chýba, opýtaj sa po slovensky. Nepridávaj žiadny text pred/za JSON.`;
+ÚLOHA: Extrahuj z textu:
+1. to (emailová adresa) — použi známe kontakty ak rozpoznáš meno
+2. subject (predmet emailu)
+3. body (text emailu)
+
+VŽDY odpovedz IBA JSON, nič iné:
+{"action":"send","to":"email@example.com","subject":"Predmet","body":"Text emailu"}
+
+Ak naozaj nevieš komu, napíš: {"action":"ask","question":"Na akú adresu mám email poslať?"}`;
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -183,7 +197,6 @@ Ak niečo chýba, opýtaj sa po slovensky. Nepridávaj žiadny text pred/za JSON
             { role: "system", content: classifyPrompt },
             { role: "user", content: userText },
           ],
-          stream: false,
         }),
       });
 
@@ -208,10 +221,14 @@ Ak niečo chýba, opýtaj sa po slovensky. Nepridávaj žiadny text pred/za JSON
           }
         }
 
-        const jsonMatch = fullText.match(/\{[^}]*"action"\s*:\s*"send"[^}]*\}/);
+        const jsonMatch = fullText.match(/\{[\s\S]*?"action"\s*:\s*"(send|ask)"[\s\S]*?\}/);
         if (jsonMatch) {
           try {
             const cmd = JSON.parse(jsonMatch[0]);
+            if (cmd.action === "ask") {
+              emailReply(cmd.question || "Na akú adresu mám email poslať?", route, updatedMessages, convId);
+              return;
+            }
             const sendRes = await fetch("/api/email", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -230,10 +247,10 @@ Ak niečo chýba, opýtaj sa po slovensky. Nepridávaj žiadny text pred/za JSON
               emailReply(`Chyba pri odoslaní: ${sendData.error || "neznáma chyba"}`, route, updatedMessages, convId);
             }
           } catch {
-            emailReply(fullText, route, updatedMessages, convId);
+            emailReply("Nepodarilo sa spracovať emailový príkaz. Skús to znova jasnejšie.", route, updatedMessages, convId);
           }
         } else {
-          emailReply(fullText, route, updatedMessages, convId);
+          emailReply(fullText || "Nepodarilo sa rozpoznať emailový príkaz. Povedz napr.: 'Pošli mail na juraj@adsun.sk, predmet Test, text Ahoj toto je test.'", route, updatedMessages, convId);
         }
       }
       return;

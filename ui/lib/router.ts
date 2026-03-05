@@ -5,6 +5,7 @@ const MAIL_WORDS = [
   "posli", "posli mail", "odosli", "schrank", "inbox",
   "spam", "cleanup", "vymaz", "precitaj", "odpoved",
   "adsun.sk", "juraj@", "info@",
+  "adresu.sk", "adresu sk", "poslat mail", "poslať mail",
 ];
 
 export type RouteType = "text" | "search" | "email" | "knowledge";
