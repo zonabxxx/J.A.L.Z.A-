@@ -10,6 +10,7 @@ import {
 } from "./chat-storage";
 import { parseEmailCommand, getContacts } from "./email-parser";
 import { AVAILABLE_MODELS, type ModelOption } from "./config";
+import { trackUsage } from "./usage-tracker";
 
 const GEMINI_EMAIL_SYSTEM = `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi a výplňovými slovami.
 
@@ -162,6 +163,14 @@ export function useChat(activeAgent: Agent | null) {
     ];
     setMessages(finalMessages);
     debouncedSave(finalMessages, convId);
+
+    const lastUserMsg = updatedMessages.filter(m => m.role === "user").pop();
+    trackUsage({
+      model: route.model,
+      route: route.type,
+      inputText: lastUserMsg?.content || "",
+      outputText: fullContent,
+    });
   };
 
   const emailReply = (
@@ -173,6 +182,7 @@ export function useChat(activeAgent: Agent | null) {
     const finalMsgs: ChatMessage[] = [...msgs, { role: "assistant", content: text, route }];
     setMessages(finalMsgs);
     debouncedSave(finalMsgs, convId);
+    trackUsage({ model: route.model, route: "email", outputText: text });
   };
 
   const detectMailbox = (text: string): string => {
@@ -224,7 +234,11 @@ export function useChat(activeAgent: Agent | null) {
       });
       if (!res.ok) return null;
       const data = await res.json();
-      return data.text || null;
+      const text = data.text || null;
+      if (text) {
+        trackUsage({ model: "gemini-2.0-flash", route: "classify", inputText: prompt, outputText: text });
+      }
+      return text;
     } catch { return null; }
   };
 

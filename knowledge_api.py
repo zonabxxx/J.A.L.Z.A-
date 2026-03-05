@@ -11,6 +11,7 @@ import sqlite3
 import secrets
 import hashlib
 import base64
+from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from knowledge_base import KnowledgeBase, list_knowledge_bases
@@ -107,6 +108,20 @@ def _init_conversations_db():
         role TEXT DEFAULT 'user',
         created_at TEXT NOT NULL
     )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS usage_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'ollama',
+        route TEXT NOT NULL DEFAULT 'chat',
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        cost_usd REAL DEFAULT 0.0,
+        user_id TEXT DEFAULT 'default'
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_log(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_log(model)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_user ON usage_log(user_id)")
     conn.commit()
     conn.close()
 
@@ -1096,6 +1111,87 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 conn.close()
                 self._send_json({"status": "deleted", "id": conv_id})
 
+            else:
+                conn.close()
+                self._send_json({"error": f"Unknown action: {action}"}, 400)
+
+        elif self.path == "/usage":
+            body = self._read_body()
+            action = body.get("action", "log")
+            conn = sqlite3.connect(CONVERSATIONS_DB)
+            conn.row_factory = sqlite3.Row
+
+            if action == "log":
+                conn.execute(
+                    "INSERT INTO usage_log (timestamp, model, provider, route, input_tokens, output_tokens, cost_usd, user_id) VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        body.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                        body.get("model", "unknown"),
+                        body.get("provider", "ollama"),
+                        body.get("route", "chat"),
+                        body.get("input_tokens", 0),
+                        body.get("output_tokens", 0),
+                        body.get("cost_usd", 0.0),
+                        body.get("user_id", "default"),
+                    ),
+                )
+                conn.commit()
+                conn.close()
+                self._send_json({"status": "logged"})
+
+            elif action == "summary":
+                period = body.get("period", "month")
+                if period == "week":
+                    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                elif period == "day":
+                    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+                else:
+                    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+                rows = conn.execute(
+                    """SELECT model, provider, route,
+                       COUNT(*) as requests,
+                       SUM(input_tokens) as total_input,
+                       SUM(output_tokens) as total_output,
+                       SUM(cost_usd) as total_cost,
+                       DATE(timestamp) as day
+                    FROM usage_log
+                    WHERE timestamp >= ?
+                    GROUP BY model, provider, route, DATE(timestamp)
+                    ORDER BY DATE(timestamp) DESC""",
+                    (since,),
+                ).fetchall()
+
+                totals = conn.execute(
+                    """SELECT
+                       COUNT(*) as requests,
+                       SUM(input_tokens) as total_input,
+                       SUM(output_tokens) as total_output,
+                       SUM(cost_usd) as total_cost
+                    FROM usage_log WHERE timestamp >= ?""",
+                    (since,),
+                ).fetchone()
+
+                by_model = conn.execute(
+                    """SELECT model, provider,
+                       COUNT(*) as requests,
+                       SUM(input_tokens) as total_input,
+                       SUM(output_tokens) as total_output,
+                       SUM(cost_usd) as total_cost
+                    FROM usage_log WHERE timestamp >= ?
+                    GROUP BY model, provider
+                    ORDER BY total_cost DESC""",
+                    (since,),
+                ).fetchall()
+
+                conn.close()
+                self._send_json({
+                    "period": period,
+                    "since": since,
+                    "totals": dict(totals) if totals else {},
+                    "by_model": [dict(r) for r in by_model],
+                    "daily": [dict(r) for r in rows],
+                })
             else:
                 conn.close()
                 self._send_json({"error": f"Unknown action: {action}"}, 400)

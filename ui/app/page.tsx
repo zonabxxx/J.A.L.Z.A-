@@ -5,6 +5,7 @@ import Chat from "@/components/chat";
 import EmailPanel from "@/components/email-panel";
 import IntegrationsPanel from "@/components/integrations-panel";
 import TasksPanel from "@/components/tasks-panel";
+import UsagePanel from "@/components/usage-panel";
 import SettingsModal from "@/components/settings-modal";
 import LoginScreen from "@/components/login-screen";
 import { useChat } from "@/lib/hooks";
@@ -178,6 +179,7 @@ export default function Home() {
         )}
         {activeTab === "email" && <EmailPanel />}
         {activeTab === "integrations" && <IntegrationsPanel health={health} />}
+        {activeTab === "usage" && <UsagePanel />}
         {activeTab === "tasks" && <TasksPanel />}
       </main>
 
