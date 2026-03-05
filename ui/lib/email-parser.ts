@@ -74,14 +74,22 @@ const CONTACTS: Contact[] = [
 ];
 
 const STT_CORRECTIONS: [RegExp, string][] = [
+  // "adsun" garbled variants
   [/adresu[\.\s]*sk/gi, "adsun.sk"],
   [/adresa[\.\s]*sk/gi, "adsun.sk"],
+  [/ale\s*som[\.\s]*sk/gi, "adsun.sk"],
+  [/ale\s*son[\.\s]*sk/gi, "adsun.sk"],
+  [/ad\s*sun/gi, "adsun"],
+  [/at\s*sun/gi, "adsun"],
+  [/a\s*son/gi, "adsun"],
+  // @ symbol
   [/at\s*sign/gi, "@"],
   [/zavinac/gi, "@"],
   [/zavináč/gi, "@"],
+  // misc
   [/bodka/gi, "."],
-  [/slnko/gi, ""],    // common STT garbage
-  [/ano\s*je/gi, ""],  // filler
+  [/slnko/gi, ""],
+  [/ano\s*je/gi, ""],
 ];
 
 function normalize(text: string): string {
@@ -104,15 +112,27 @@ function findContact(text: string): Contact | null {
   const corrected = correctSTT(text);
   const norm = normalize(corrected);
 
-  // Direct email match
-  const emailMatch = corrected.match(/[\w.-]+@[\w.-]+\.\w+/);
+  // 1. Direct complete email match
+  const emailMatch = corrected.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
   if (emailMatch) {
-    const found = CONTACTS.find((c) => c.email === emailMatch[0]);
+    const addr = emailMatch[0].toLowerCase();
+    const found = CONTACTS.find((c) => c.email.toLowerCase() === addr);
     if (found) return found;
-    return { name: emailMatch[0], email: emailMatch[0], aliases: [] };
+    return { name: addr, email: addr, aliases: [] };
   }
 
-  // Try to reconstruct email from "name @ domain" patterns
+  // 2. Partial email: "user@" or "user@ junk .sk" → match by username part
+  const partialAt = corrected.match(/([\w.-]+)\s*@/);
+  if (partialAt) {
+    const username = partialAt[1].toLowerCase();
+    const found = CONTACTS.find((c) => c.email.split("@")[0].toLowerCase() === username);
+    if (found) return found;
+    // Try fuzzy: "juraj" in email
+    const fuzzy = CONTACTS.find((c) => c.email.toLowerCase().startsWith(username));
+    if (fuzzy) return fuzzy;
+  }
+
+  // 3. Reconstruct "name @ domain" with spaces
   const atPattern = corrected.match(/([\w.-]+)\s*@\s*([\w.-]+)/);
   if (atPattern) {
     const reconstructed = `${atPattern[1]}@${atPattern[2]}`;
@@ -121,10 +141,9 @@ function findContact(text: string): Contact | null {
       (c) => normalize(c.email) === normalize(emailLike)
     );
     if (found) return found;
-    return { name: emailLike, email: emailLike, aliases: [] };
   }
 
-  // Alias matching — longest match first
+  // 4. Alias matching — longest match first
   const sortedContacts = [...CONTACTS].sort(
     (a, b) =>
       Math.max(...b.aliases.map((al) => al.length)) -
