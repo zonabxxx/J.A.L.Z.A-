@@ -9,6 +9,7 @@ import {
   type StoredMessage,
 } from "./chat-storage";
 import { parseEmailCommand, getContacts } from "./email-parser";
+import { AVAILABLE_MODELS, type ModelOption } from "./config";
 
 const GEMINI_EMAIL_SYSTEM = `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi a výplňovými slovami.
 
@@ -54,6 +55,7 @@ export function useChat(activeAgent: Agent | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<RouteResult | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<ModelOption>(AVAILABLE_MODELS[0]);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const pendingEmailRef = useRef<{
@@ -569,6 +571,21 @@ export function useChat(activeAgent: Agent | null) {
             updated,
             conversationId
           );
+        } else if (selectedModel.provider === "gemini") {
+          const geminiRoute: RouteResult = {
+            type: "text",
+            model: selectedModel.model,
+            label: selectedModel.name,
+            icon: selectedModel.icon,
+          };
+          setCurrentRoute(geminiRoute);
+          await streamResponse(
+            "/api/gemini-chat",
+            { messages: plainMessages, model: selectedModel.model },
+            geminiRoute,
+            updated,
+            conversationId
+          );
         } else {
           await streamResponse("/api/chat", { messages: plainMessages }, route, updated, conversationId);
         }
@@ -666,5 +683,7 @@ export function useChat(activeAgent: Agent | null) {
     currentRoute,
     conversationId,
     loadConversation,
+    selectedModel,
+    setSelectedModel,
   };
 }

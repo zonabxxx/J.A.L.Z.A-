@@ -31,6 +31,8 @@ export default function Home() {
     currentRoute,
     conversationId,
     loadConversation,
+    selectedModel,
+    setSelectedModel,
   } = useChat(activeAgent);
 
   const [agents, setAgents] = useState<Record<string, Agent>>({});
@@ -170,6 +172,8 @@ export default function Home() {
             activeAgent={activeAgent}
             currentRoute={currentRoute}
             onMenuToggle={() => setSidebarOpen((p) => !p)}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
         )}
         {activeTab === "email" && <EmailPanel />}

@@ -4,6 +4,7 @@ import type { Agent } from "@/lib/types";
 import type { ChatMessage } from "@/lib/hooks";
 import type { RouteResult } from "@/lib/router";
 import { getFeatures } from "@/lib/features";
+import { AVAILABLE_MODELS, type ModelOption } from "@/lib/config";
 import VoiceButton from "./voice-button";
 import SpeakButton from "./speak-button";
 
@@ -16,6 +17,8 @@ interface Props {
   activeAgent: Agent | null;
   currentRoute: RouteResult | null;
   onMenuToggle?: () => void;
+  selectedModel: ModelOption;
+  onModelChange: (model: ModelOption) => void;
 }
 
 function RouteBadge({ route }: { route: RouteResult }) {
@@ -43,12 +46,15 @@ export default function Chat({
   activeAgent,
   currentRoute,
   onMenuToggle,
+  selectedModel,
+  onModelChange,
 }: Props) {
   const [input, setInput] = useState("");
   const [interimText, setInterimText] = useState("");
   const [features, setFeatures] = useState(getFeatures());
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [showModelPicker, setShowModelPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -136,12 +142,50 @@ export default function Chat({
             </div>
           </div>
         </div>
-        <button
-          onClick={onClear}
-          className="text-xs text-zinc-500 hover:text-zinc-300 px-2 md:px-3 py-1.5 rounded hover:bg-zinc-800 transition-colors"
-        >
-          Nový chat
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setShowModelPicker(!showModelPicker)}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors border border-zinc-700"
+            >
+              <span>{selectedModel.icon}</span>
+              <span className="hidden sm:inline">{selectedModel.name}</span>
+              <svg className="w-3 h-3 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+            {showModelPicker && (
+              <div className="absolute right-0 top-full mt-1 w-64 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl z-50 overflow-hidden">
+                {AVAILABLE_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => { onModelChange(m); setShowModelPicker(false); }}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${
+                      selectedModel.id === m.id
+                        ? "bg-blue-600/20 text-blue-400"
+                        : "hover:bg-zinc-800 text-zinc-300"
+                    }`}
+                  >
+                    <span className="text-lg">{m.icon}</span>
+                    <div>
+                      <div className="text-sm font-medium">{m.name}</div>
+                      <div className="text-[10px] text-zinc-500">{m.description}</div>
+                    </div>
+                    {selectedModel.id === m.id && (
+                      <span className="ml-auto text-blue-400 text-sm">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClear}
+            className="text-xs text-zinc-500 hover:text-zinc-300 px-2 md:px-3 py-1.5 rounded hover:bg-zinc-800 transition-colors"
+          >
+            Nový chat
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
@@ -159,13 +203,19 @@ export default function Chat({
               </p>
               <div className="flex flex-wrap justify-center gap-1.5 md:gap-2 mt-3">
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-purple-600/10 text-purple-400">
-                  🧠 jalza — chat
+                  🧠 jalza — lokálny
+                </span>
+                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-cyan-600/10 text-cyan-400">
+                  ⚡ Gemini Flash — rýchly
+                </span>
+                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-violet-600/10 text-violet-400">
+                  💎 Gemini Pro — premium
                 </span>
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-emerald-600/10 text-emerald-400">
-                  🔍 Gemini — web
+                  🔍 Web Search
                 </span>
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-amber-600/10 text-amber-400">
-                  📚 RAG — agenti
+                  📚 RAG agenti
                 </span>
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-blue-600/10 text-blue-400">
                   📧 Email
