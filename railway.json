@@ -1,10 +1,7 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
-  "build": {
-    "buildCommand": "cd ui && npm ci && npm run build"
-  },
   "deploy": {
-    "startCommand": "cd ui && npm start",
+    "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
