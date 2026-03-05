@@ -4,12 +4,24 @@ import { GEMINI_API_KEY, GEMINI_MODEL } from "@/lib/config";
 export async function POST(req: NextRequest) {
   const { messages } = await req.json();
 
-  const contents = messages
+  const systemMsg = messages.find((m: { role: string }) => m.role === "system");
+  const userMessages = messages
     .filter((m: { role: string }) => m.role !== "system")
     .map((m: { role: string; content: string }) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     }));
+
+  const contents = [
+    {
+      role: "user",
+      parts: [{ text: systemMsg?.content
+        ? `${systemMsg.content}\n\nDôležité: VŽDY odpovedaj po SLOVENSKY.`
+        : "Si pomocný asistent J.A.L.Z.A. VŽDY odpovedaj po SLOVENSKY." }],
+    },
+    { role: "model", parts: [{ text: "Rozumiem, budem odpovedať po slovensky." }] },
+    ...userMessages,
+  ];
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
