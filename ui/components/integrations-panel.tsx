@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import type { ServiceHealth } from "@/lib/use-health";
 
 interface Integration {
   id: string;
@@ -13,7 +14,15 @@ interface Integration {
   config: Record<string, unknown>;
 }
 
-export default function IntegrationsPanel() {
+interface Props {
+  health: {
+    services: ServiceHealth[];
+    check: () => void;
+    isOnline: (id: string) => boolean;
+  };
+}
+
+export default function IntegrationsPanel({ health }: Props) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -36,6 +45,20 @@ export default function IntegrationsPanel() {
   useEffect(() => {
     load();
   }, []);
+
+  const healthMap: Record<string, string> = {
+    ollama: "ollama",
+    gemini: "gemini",
+    knowledge_api: "knowledge_api",
+  };
+
+  const getLiveStatus = (integration: Integration): "connected" | "disconnected" | "empty" => {
+    const healthId = healthMap[integration.id];
+    if (healthId) {
+      return health.isOnline(healthId) ? "connected" : "disconnected";
+    }
+    return integration.status;
+  };
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -131,12 +154,19 @@ export default function IntegrationsPanel() {
         <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-green-500" />
-            {integrations.filter((i) => i.status === "connected").length} pripojených
+            {integrations.filter((i) => getLiveStatus(i) === "connected").length} pripojených
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-red-500" />
-            {integrations.filter((i) => i.status === "disconnected").length} odpojených
+            {integrations.filter((i) => getLiveStatus(i) === "disconnected").length} odpojených
           </span>
+          <button
+            onClick={health.check}
+            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+            title="Obnoviť stav"
+          >
+            ↻
+          </button>
         </div>
       </div>
 
@@ -164,10 +194,10 @@ export default function IntegrationsPanel() {
                           {integration.name}
                         </span>
                         <span
-                          className={`w-2 h-2 rounded-full ${statusColor(integration.status)}`}
+                          className={`w-2 h-2 rounded-full ${statusColor(getLiveStatus(integration))}`}
                         />
                         <span className="text-[10px] text-zinc-500">
-                          {statusLabel(integration.status)}
+                          {statusLabel(getLiveStatus(integration))}
                         </span>
                       </div>
                       <div className="text-xs text-zinc-500 mt-0.5">

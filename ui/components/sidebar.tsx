@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Agent } from "@/lib/types";
 import type { User } from "@/lib/auth";
+import type { ServiceHealth } from "@/lib/use-health";
 import {
   loadConversations,
   deleteConversation as deleteConvo,
@@ -18,6 +19,11 @@ interface Props {
   onNewChat: () => void;
   onLoadConversation: (id: string, agentKey: string | null) => void;
   activeConversationId: string | null;
+  health: {
+    services: ServiceHealth[];
+    check: () => void;
+    isOnline: (id: string) => boolean;
+  };
 }
 
 export default function Sidebar({
@@ -30,6 +36,7 @@ export default function Sidebar({
   onNewChat,
   onLoadConversation,
   activeConversationId,
+  health,
 }: Props) {
   const [agents, setAgents] = useState<Record<string, Agent>>({});
   const [showCreate, setShowCreate] = useState(false);
@@ -196,42 +203,61 @@ export default function Sidebar({
                   : "hover:bg-zinc-800 text-zinc-300"
               }`}
             >
-              <div className="font-medium">J.A.L.Z.A. (všeobecný)</div>
-              <div className="text-xs text-zinc-500 mt-0.5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    health.isOnline("ollama") ? "bg-green-500" : "bg-red-500"
+                  }`}
+                  title={health.isOnline("ollama") ? "Online" : "Offline"}
+                />
+                <span className="font-medium">J.A.L.Z.A. (všeobecný)</span>
+              </div>
+              <div className="text-xs text-zinc-500 mt-0.5 ml-4">
                 jalza — hlavný model
               </div>
             </button>
 
-            {Object.entries(agents).map(([key, agent]) => (
-              <div
-                key={key}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelectAgent(agent)}
-                onKeyDown={(e) => e.key === "Enter" && onSelectAgent(agent)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
-                  activeAgent?.key === key
-                    ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
-                    : "hover:bg-zinc-800 text-zinc-300"
-                }`}
-              >
-                <div className="font-medium">{agent.name}</div>
-                <div className="text-xs text-zinc-500 mt-0.5">
-                  {agent.sources} zdrojov · {agent.chunks} častí
+            {Object.entries(agents).map(([key, agent]) => {
+              const agentOnline = health.isOnline("ollama") && health.isOnline("knowledge_api");
+              return (
+                <div
+                  key={key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectAgent(agent)}
+                  onKeyDown={(e) => e.key === "Enter" && onSelectAgent(agent)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                    activeAgent?.key === key
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-600/30"
+                      : "hover:bg-zinc-800 text-zinc-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        agentOnline ? "bg-green-500" : "bg-red-500"
+                      }`}
+                      title={agentOnline ? "Online" : "Offline"}
+                    />
+                    <span className="font-medium">{agent.name}</span>
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-0.5 ml-4">
+                    {agent.sources} zdrojov · {agent.chunks} častí
+                  </div>
+                  <div className="flex gap-1.5 mt-1 ml-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLearn(key);
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
+                    >
+                      Učiť sa
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-1.5 mt-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleLearn(key);
-                    }}
-                    className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
-                  >
-                    Učiť sa
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {!showCreate ? (
               <button
@@ -464,6 +490,41 @@ export default function Sidebar({
             ))}
           </>
         )}
+      </div>
+
+      {/* Service status */}
+      <div className="border-t border-zinc-800 px-3 py-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+            Služby
+          </span>
+          <button
+            onClick={health.check}
+            className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+            title="Obnoviť stav"
+          >
+            ↻
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {health.services.map((s) => (
+            <span key={s.id} className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  s.status === "online"
+                    ? "bg-green-500"
+                    : s.status === "checking"
+                    ? "bg-yellow-500 animate-pulse"
+                    : "bg-red-500"
+                }`}
+              />
+              {s.name}
+              {s.latency != null && s.status === "online" && (
+                <span className="text-zinc-600">{s.latency}ms</span>
+              )}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* User profile + settings */}

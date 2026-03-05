@@ -12,6 +12,7 @@ import { checkSession, logoutUser, type User } from "@/lib/auth";
 import { getConversation } from "@/lib/chat-storage";
 import { initLocationOnStartup } from "@/lib/location";
 import { registerServiceWorker } from "@/lib/register-sw";
+import { useHealth } from "@/lib/use-health";
 import type { Agent } from "@/lib/types";
 
 export default function Home() {
@@ -33,6 +34,7 @@ export default function Home() {
   } = useChat(activeAgent);
 
   const [agents, setAgents] = useState<Record<string, Agent>>({});
+  const health = useHealth();
 
   useEffect(() => {
     checkSession().then((u) => {
@@ -153,6 +155,7 @@ export default function Home() {
           onNewChat={handleNewChat}
           onLoadConversation={handleLoadConversation}
           activeConversationId={conversationId}
+          health={health}
         />
       </div>
 
@@ -170,7 +173,7 @@ export default function Home() {
           />
         )}
         {activeTab === "email" && <EmailPanel />}
-        {activeTab === "integrations" && <IntegrationsPanel />}
+        {activeTab === "integrations" && <IntegrationsPanel health={health} />}
         {activeTab === "tasks" && <TasksPanel />}
       </main>
 
