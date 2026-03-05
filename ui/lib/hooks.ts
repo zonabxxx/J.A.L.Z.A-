@@ -169,6 +169,46 @@ export function useChat(activeAgent: Agent | null) {
     const lower = userText.toLowerCase();
     const mailbox = detectMailbox(userText);
 
+    // If there's a draft waiting for an address, try to resolve from this input
+    if (draftEmailRef.current && draftEmailRef.current.missing.includes("adresa príjemcu")) {
+      const emailMatch = userText.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
+      const parsed = parseEmailCommand(`posli mail ${userText}`);
+      const resolvedTo = emailMatch?.[0] || parsed?.to || null;
+
+      if (resolvedTo) {
+        const draft = draftEmailRef.current;
+        draftEmailRef.current = null;
+        const fullText = `${draft.originalText} na adresu ${resolvedTo}`;
+        try {
+          const geminiRes = await fetch("/api/gemini", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.\n\nPRAVIDLÁ:\n1. Oprav preklepy a skomolené slová\n2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)\n3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"\n4. Odpovedz IBA v JSON formáte:\n{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}`,
+              prompt: fullText,
+            }),
+          });
+          let subject = draft.subject || "Bez predmetu";
+          let body = draft.body || fullText;
+          if (geminiRes.ok) {
+            const gd = await geminiRes.json();
+            const jm = (gd.text || "").match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
+            if (jm) {
+              try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {}
+            }
+          }
+          pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
+          emailReply(
+            `**Návrh emailu:**\n\n**Komu:** ${resolvedTo}\n**Predmet:** ${subject}\n\n---\n\n${body}\n\n---\n\nPovedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+            route, updatedMessages, convId
+          );
+        } catch {
+          emailReply("Nepodarilo sa spracovať email.", route, updatedMessages, convId);
+        }
+        return;
+      }
+    }
+
     const isSend = /posli|pošli|odosli|odošli|napisz|napíš|send|write\s*mail|write\s*email/i.test(lower);
     const isReply = /odpoved|odpovedz|reply|reaguj/i.test(lower);
     const isSearch = /hladaj|hľadaj|najdi|nájdi|search|vyhladaj|vyhľadaj|od\s+\w+.*mail|mail.*od\s+\w+/i.test(lower);
@@ -459,16 +499,15 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
       if (draftEmailRef.current) {
         const draft = draftEmailRef.current;
         const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
-        setCurrentRoute(emailRoute);
 
-        // Check if user provided an email address
-        const emailMatch = content.match(/[\w.-]+@[\w.-]+\.\w+/);
-        const contact = (() => { try { return parseEmailCommand(`posli mail ${content}`); } catch { return null; } })();
-        const resolvedTo = emailMatch?.[0] || contact?.to || null;
+        // Try to extract email address from user's input
+        const emailMatch = content.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
+        const parsed = parseEmailCommand(`posli mail ${content}`);
+        const resolvedTo = emailMatch?.[0] || parsed?.to || null;
 
         if (resolvedTo) {
+          setCurrentRoute(emailRoute);
           draftEmailRef.current = null;
-          // Now run through Gemini to clean up the full text
           const fullText = `${draft.originalText} na adresu ${resolvedTo}`;
           try {
             const geminiRes = await fetch("/api/gemini", {
@@ -501,14 +540,20 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
           }
           setIsStreaming(false);
           return;
-        } else {
-          // Still can't resolve, cancel draft
+        }
+
+        // User asked a question or said something that's NOT a new topic — keep draft alive
+        const isAboutEmail = /mail|email|adres|komu|kam|posla|pošl|na\s+ak|zrus|zruš|cancel/i.test(lowerTrimmed);
+        if (isAboutEmail) {
+          // Keep draft, let normal routing handle it but email handler will see draft
+        } else if (/^(nie|cancel|zrus|zruš|nechci|stop)$/i.test(lowerTrimmed)) {
           draftEmailRef.current = null;
         }
+        // For anything else, keep draft alive — don't cancel!
       }
 
-      // Cancel pending email if user starts a different topic
-      if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd/i.test(lowerTrimmed)) {
+      // Cancel pending email only if clearly different topic
+      if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd|potvrď|odosli|odošli|send|yes/i.test(lowerTrimmed)) {
         pendingEmailRef.current = null;
       }
 
