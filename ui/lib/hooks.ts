@@ -235,7 +235,7 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    const isSend = /posli|pošli|odosli|odošli|napisz|napíš|send|write\s*mail|write\s*email/i.test(lower);
+    const isSend = /posli|pošli|poslat|poslať|odosli|odošli|odoslat|odoslať|napisz|napíš|napisat|napísať|send|write\s*mail|write\s*email|chcem\s*posl/i.test(lower);
     const isReply = /odpoved|odpovedz|reply|reaguj/i.test(lower);
     const isSearch = /hladaj|hľadaj|najdi|nájdi|search|vyhladaj|vyhľadaj|od\s+\w+.*mail|mail.*od\s+\w+/i.test(lower);
     const isCleanupExec = /vymaz\s*(ich|to|ich\s*vsetk|všetk)|zmaz\s*(ich|to)|delete\s*them|potvrdzujem/i.test(lower);

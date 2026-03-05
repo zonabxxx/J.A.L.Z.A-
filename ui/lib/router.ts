@@ -7,6 +7,10 @@ const MAIL_WORDS = [
   "adsun.sk", "juraj@", "info@",
   "adresu.sk", "adresu sk", "poslat mail", "poslať mail",
   "potvrd", "potvrdzujem",
+  "poslat", "poslať", "odoslat", "odoslať",
+  "chcem poslat", "chcem poslať",
+  "napisat mail", "napísať mail",
+  "testovaci mail", "testovací mail",
 ];
 
 export type RouteType = "text" | "search" | "email" | "knowledge";
