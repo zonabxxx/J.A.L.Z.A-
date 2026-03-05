@@ -34,10 +34,14 @@ export default function VoiceButton({ onTranscript, disabled }: Props) {
             method: "POST",
             body: formData,
           });
+          if (!res.ok) throw new Error("transcribe failed");
           const data = await res.json();
-          if (data.text) onTranscript(data.text);
+          if (data.text && data.text.trim()) {
+            onTranscript(data.text);
+          } else {
+            throw new Error("empty transcript");
+          }
         } catch {
-          // fallback to Web Speech API
           fallbackSpeechRecognition();
         } finally {
           setIsProcessing(false);

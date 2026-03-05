@@ -230,6 +230,41 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             self._proxy_ollama(method="POST")
             return
 
+        # Whisper STT endpoint
+        if self.path == "/transcribe":
+            if not self._check_token():
+                self._send_json({"error": "Unauthorized"}, 401)
+                return
+            import cgi
+            import tempfile
+            ctype, pdict = cgi.parse_header(self.headers.get("Content-Type", ""))
+            if ctype != "multipart/form-data":
+                self._send_json({"error": "Expected multipart/form-data"}, 400)
+                return
+            pdict["boundary"] = pdict["boundary"].encode()
+            length = int(self.headers.get("Content-Length", 0))
+            form = cgi.parse_multipart(self.rfile, pdict)
+            audio_data = form.get("file", [None])[0]
+            if not audio_data:
+                self._send_json({"error": "No audio file"}, 400)
+                return
+            try:
+                import whisper
+                _whisper_model = getattr(self.__class__, "_whisper_model", None)
+                if _whisper_model is None:
+                    _whisper_model = whisper.load_model("base")
+                    self.__class__._whisper_model = _whisper_model
+                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+                    tmp.write(audio_data)
+                    tmp_path = tmp.name
+                result = _whisper_model.transcribe(tmp_path, language="sk")
+                os.unlink(tmp_path)
+                text = result.get("text", "").strip()
+                self._send_json({"text": text})
+            except Exception as e:
+                self._send_json({"error": f"Whisper error: {e}"}, 500)
+            return
+
         # Auth endpoints — no token required
         if self.path == "/auth/register":
             body = self._read_body()

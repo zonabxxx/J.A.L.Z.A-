@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { OLLAMA_URL } from "@/lib/config";
+import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "@/lib/config";
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -9,45 +9,31 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "No file" }, { status: 400 });
   }
 
-  // Try Whisper via Ollama (if available)
   try {
-    const buffer = await file.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
+    const proxyForm = new FormData();
+    proxyForm.append("file", file, "recording.webm");
 
-    // Use Ollama's whisper endpoint if available
-    const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    const res = await fetch(`${KNOWLEDGE_API_URL}/transcribe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "jalza",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Prepíš nasledujúci hlasový vstup do textu. Odpovedz IBA prepísaným textom, nič iné nepridávaj.",
-          },
-          {
-            role: "user",
-            content: `[Hlasový vstup - audio base64: ${base64.substring(0, 100)}...]`,
-          },
-        ],
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(10000),
+      headers: { "X-API-Token": JALZA_API_TOKEN },
+      body: proxyForm,
+      signal: AbortSignal.timeout(30000),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      const text = data.message?.content || "";
-      if (text) return Response.json({ text });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return Response.json(
+        { error: err.error || "Transcription failed" },
+        { status: res.status }
+      );
     }
-  } catch {
-    // Ollama whisper not available, fallback
-  }
 
-  // Fallback: signal to client to use Web Speech API
-  return Response.json(
-    { error: "Whisper not available, use browser speech recognition" },
-    { status: 501 }
-  );
+    const data = await res.json();
+    return Response.json({ text: data.text || "" });
+  } catch (e) {
+    return Response.json(
+      { error: `Whisper unavailable: ${e instanceof Error ? e.message : "timeout"}` },
+      { status: 502 }
+    );
+  }
 }
