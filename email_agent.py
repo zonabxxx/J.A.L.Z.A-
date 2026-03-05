@@ -40,21 +40,43 @@ if os.path.isfile(_env_path):
 
 # ── HTML → plain text helper ──────────────────────────────────────────
 class _HTMLStripper(HTMLParser):
+    BLOCK_TAGS = {"br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "hr"}
+
     def __init__(self):
         super().__init__()
-        self._parts = []
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in self.BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag.lower() in ("p", "div", "tr", "li", "blockquote"):
+            self._parts.append("\n")
 
     def handle_data(self, data):
         self._parts.append(data)
 
     def get_text(self):
-        return " ".join(self._parts)
+        text = "".join(self._parts)
+        lines = [ln.strip() for ln in text.splitlines()]
+        result = []
+        blank = False
+        for ln in lines:
+            if not ln:
+                if not blank:
+                    result.append("")
+                    blank = True
+            else:
+                result.append(ln)
+                blank = False
+        return "\n".join(result).strip()
 
 
 def _html_to_text(html: str) -> str:
     s = _HTMLStripper()
     s.feed(html)
-    return s.get_text().strip()
+    return s.get_text()
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -22,6 +22,25 @@ interface Props {
   onModelChange: (model: ModelOption) => void;
 }
 
+function formatEmailBody(text: string): string {
+  let cleaned = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  // Insert line breaks before common email markers that got concatenated
+  cleaned = cleaned
+    .replace(/(S pozdravom|Best regards|Kind regards|Regards|Ďakujem|Dakujem|Thanks),?\s*/gi, "\n\n$1,\n")
+    .replace(/(Od:|From:|Odoslané:|Sent:|Dátum:|Date:|Komu:|To:|Predmet:|Subject:|Cc:)\s*/gi, "\n$1 ")
+    .replace(/(\S)(Od:\s)/g, "$1\n\n$2")
+    .replace(/(\S)(From:\s)/g, "$1\n\n$2")
+    .replace(/(_{3,}|-{3,}|={3,})/g, "\n$1\n");
+
+  // Collapse 3+ consecutive newlines to 2
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n");
+
+  return cleaned.trim();
+}
+
 function RouteBadge({ route }: { route: RouteResult }) {
   const colors: Record<string, string> = {
     text: "bg-purple-600/20 text-purple-400",
@@ -252,8 +271,8 @@ export default function Chat({
                     }}
                   />
                   {msg.content && msg.content.length > 200 && (
-                    <div className="mt-3 pt-3 border-t border-zinc-700/50 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
-                      {msg.content}
+                    <div className="mt-3 pt-3 border-t border-zinc-700/50 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto break-words overflow-wrap-anywhere">
+                      {formatEmailBody(msg.content)}
                     </div>
                   )}
                 </div>
