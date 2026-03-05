@@ -111,6 +111,121 @@ export function useChat(activeAgent: Agent | null) {
     debouncedSave(finalMessages, convId);
   };
 
+  const handleEmailInChat = async (
+    userText: string,
+    route: RouteResult,
+    updatedMessages: ChatMessage[],
+    convId: string | null
+  ) => {
+    const lower = userText.toLowerCase();
+    const isSend = /posli|odosli|napisz|send|reply|odpoved/i.test(lower);
+    const isCleanup = /vymaz|zmaz|cleanup|delete|spam|marketing/i.test(lower) && !isSend;
+
+    if (isSend) {
+      const systemPrompt = `Si emailový asistent. Používateľ chce poslať email. Analyzuj jeho správu a extrahuj:
+- komu (to)
+- predmet (subject)  
+- text emailu (body)
+
+Ak niečo chýba, zdvorilo sa opýtaj. Ak máš všetko, odpovedz vo formáte:
+SEND_EMAIL|to|subject|body
+
+Odpovedaj po slovensky.`;
+
+      await streamResponse(
+        "/api/chat",
+        { messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userText }] },
+        route,
+        updatedMessages,
+        convId
+      );
+      return;
+    }
+
+    if (isCleanup) {
+      try {
+        const res = await fetch("/api/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cleanup", dry_run: true }),
+        });
+        const data = await res.json();
+        const summary = `**Cleanup analýza:**\n- Marketing emaily: ${data.marketing_found || 0}\n- Staré emaily (365+ dní): ${data.old_found || 0}\n\nAk chceš tieto emaily vymazať, napíš "vymaz ich" alebo použi Email tab.`;
+
+        const finalMsgs: ChatMessage[] = [
+          ...updatedMessages,
+          { role: "assistant", content: summary, route },
+        ];
+        setMessages(finalMsgs);
+        debouncedSave(finalMsgs, convId);
+      } catch {
+        const errMsgs: ChatMessage[] = [
+          ...updatedMessages,
+          { role: "assistant", content: "Nepodarilo sa skontrolovať emaily na cleanup.", route },
+        ];
+        setMessages(errMsgs);
+        debouncedSave(errMsgs, convId);
+      }
+      return;
+    }
+
+    // Default: fetch and summarize emails
+    try {
+      const todayCheck = /dnes|today|dnesn/i.test(lower);
+      const res = await fetch(`/api/email?today=${todayCheck}&limit=15`);
+      const data = await res.json();
+
+      if (data.error) {
+        const errMsgs: ChatMessage[] = [
+          ...updatedMessages,
+          { role: "assistant", content: `Chyba pri načítaní emailov: ${data.error}`, route },
+        ];
+        setMessages(errMsgs);
+        debouncedSave(errMsgs, convId);
+        return;
+      }
+
+      const emails = data.emails || [];
+      if (emails.length === 0) {
+        const noMsgs: ChatMessage[] = [
+          ...updatedMessages,
+          { role: "assistant", content: todayCheck ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.", route },
+        ];
+        setMessages(noMsgs);
+        debouncedSave(noMsgs, convId);
+        return;
+      }
+
+      const emailContext = emails
+        .map((e: { from: string; subject: string; date: string; snippet?: string }, i: number) =>
+          `${i + 1}. Od: ${e.from}\n   Predmet: ${e.subject}\n   Dátum: ${e.date}${e.snippet ? `\n   Náhľad: ${e.snippet.slice(0, 100)}` : ""}`
+        )
+        .join("\n\n");
+
+      const systemPrompt = `Si emailový asistent. Používateľ sa pýta na emaily. Tu sú jeho emaily:\n\n${emailContext}\n\nOdpovedz stručne po slovensky na jeho otázku. Zhrň emaily prehľadne.`;
+
+      await streamResponse(
+        "/api/chat",
+        {
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userText },
+          ],
+        },
+        route,
+        updatedMessages,
+        convId
+      );
+    } catch {
+      const errMsgs: ChatMessage[] = [
+        ...updatedMessages,
+        { role: "assistant", content: "Nepodarilo sa načítať emaily. Skontroluj pripojenie.", route },
+      ];
+      setMessages(errMsgs);
+      debouncedSave(errMsgs, convId);
+    }
+  };
+
   const sendMessage = useCallback(
     async (content: string) => {
       const userMsg: ChatMessage = { role: "user", content };
@@ -131,6 +246,11 @@ export function useChat(activeAgent: Agent | null) {
           role,
           content: c,
         }));
+
+        if (route.type === "email") {
+          await handleEmailInChat(content, route, updated, conversationId);
+          return;
+        }
 
         if (route.type === "search") {
           const loc = await getLocation();
