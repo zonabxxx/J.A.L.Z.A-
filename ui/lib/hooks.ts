@@ -10,6 +10,23 @@ import {
 } from "./chat-storage";
 import { parseEmailCommand, getContacts } from "./email-parser";
 
+const GEMINI_EMAIL_PROMPT = `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Text je často chybný, skomolený a obsahuje výplňové slová.
+
+TVOJA ÚLOHA: Pochop ZÁMER používateľa a vytvor z toho čistý email.
+
+DÔLEŽITÉ PRAVIDLÁ:
+1. PREDMET (subject) — extrahuj len PODSTATU, nie celú vetu. Príklady:
+   - "predmet mailu je test" → subject: "Test"
+   - "na predmet mailu je faktúra" → subject: "Faktúra"
+   - "s tým že predmet bude ponuka služieb" → subject: "Ponuka služieb"
+   - "predmet test a telo" → subject: "Test"
+2. TEXT EMAILU (body) — extrahuj len obsah emailu, nie inštrukcie. Napíš ako normálny email s pozdravom a podpisom "Juraj":
+   - "telo mailu je tiež test" → body: "Ahoj,\\n\\ntoto je test.\\n\\nS pozdravom,\\nJuraj"
+   - "text bude testujem testovaného" → body: "Ahoj,\\n\\ntestujem.\\n\\nS pozdravom,\\nJuraj"
+3. Ignoruj slová ako: "mailu je", "cez telo", "na predmet", "s tým že" — to sú inštrukcie, nie obsah
+4. Odpovedz IBA v JSON formáte, nič iné:
+{"subject":"čistý krátky predmet","body":"čistý text emailu s pozdravom"}`;
+
 export interface ChatMessage extends Message {
   route?: RouteResult;
 }
@@ -184,9 +201,9 @@ export function useChat(activeAgent: Agent | null) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.\n\nPRAVIDLÁ:\n1. Oprav preklepy a skomolené slová\n2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)\n3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"\n4. Odpovedz IBA v JSON formáte:\n{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}`,
-              prompt: fullText,
-            }),
+              systemPrompt: GEMINI_EMAIL_PROMPT,
+                prompt: fullText,
+              }),
           });
           let subject = draft.subject || "Bez predmetu";
           let body = draft.body || fullText;
@@ -252,18 +269,7 @@ export function useChat(activeAgent: Agent | null) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.
-
-PRAVIDLÁ:
-1. Oprav preklepy a skomolené slová
-2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)
-3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"
-4. Odpovedz IBA v JSON formáte, nič iné:
-{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}
-
-PRÍKLADY:
-- "predmet test text ahoj toto je skuska" → {"subject":"Test","body":"Ahoj,\\n\\ntoto je skúška.\\n\\nS pozdravom,\\nJuraj"}
-- "s tym ze tex bude tak test aha obsah mailu bude testujem" → {"subject":"Test","body":"Ahoj,\\n\\ntestujem email.\\n\\nS pozdravom,\\nJuraj"}`,
+            systemPrompt: GEMINI_EMAIL_PROMPT,
             prompt: userText,
           }),
         });
@@ -549,7 +555,12 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
         }
       }
 
-      if (pendingEmailRef.current && /^(ano|ok|posli|pošli|potvrd|potvrdzujem|odosli|odošli|send|yes|potvrď)$/i.test(lowerTrimmed)) {
+      const isConfirm = /^(ano|ok|yes|posli|pošli|potvrd|potvrdzujem|odosli|odošli|send|potvrď)(\s+(to|ho|mail|email))*[.!?]*$/i.test(lowerTrimmed)
+        || /^ok\s+posli/i.test(lowerTrimmed)
+        || /^ano\s+(posli|pošli|odosli|odošli)/i.test(lowerTrimmed)
+        || /^(posli|pošli|odosli|odošli)\s+(to|ho|mail|email)/i.test(lowerTrimmed);
+
+      if (pendingEmailRef.current && isConfirm) {
         const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
         setCurrentRoute(emailRoute);
         const pending = pendingEmailRef.current;
@@ -602,7 +613,7 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.\n\nPRAVIDLÁ:\n1. Oprav preklepy a skomolené slová\n2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)\n3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"\n4. Odpovedz IBA v JSON formáte:\n{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}`,
+                systemPrompt: GEMINI_EMAIL_PROMPT,
                 prompt: fullText,
               }),
             });
