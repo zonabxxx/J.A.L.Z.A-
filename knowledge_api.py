@@ -11,7 +11,7 @@ import sqlite3
 import secrets
 import hashlib
 import base64
-from datetime import datetime, timezone, timedelta
+import datetime as _dt
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from knowledge_base import KnowledgeBase, list_knowledge_bases
@@ -1125,7 +1125,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 conn.execute(
                     "INSERT INTO usage_log (timestamp, model, provider, route, input_tokens, output_tokens, cost_usd, user_id) VALUES (?,?,?,?,?,?,?,?)",
                     (
-                        body.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                        body.get("timestamp", _dt.datetime.now(_dt.timezone.utc).isoformat()),
                         body.get("model", "unknown"),
                         body.get("provider", "ollama"),
                         body.get("route", "chat"),
@@ -1142,11 +1142,11 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             elif action == "summary":
                 period = body.get("period", "month")
                 if period == "week":
-                    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=7)).isoformat()
                 elif period == "day":
-                    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+                    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=1)).isoformat()
                 else:
-                    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+                    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=30)).isoformat()
 
                 rows = conn.execute(
                     """SELECT model, provider, route,
