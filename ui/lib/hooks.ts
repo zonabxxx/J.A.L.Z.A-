@@ -199,7 +199,16 @@ export function useChat(activeAgent: Agent | null) {
           }
           pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
           emailReply(
-            `**Návrh emailu:**\n\n**Komu:** ${resolvedTo}\n**Predmet:** ${subject}\n\n---\n\n${body}\n\n---\n\nPovedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+            `**Skontroluj návrh emailu:**\n\n` +
+            `📬 **Komu:** ${resolvedTo}\n` +
+            `📝 **Predmet:** ${subject}\n\n` +
+            `---\n\n${body}\n\n---\n\n` +
+            `**Sú údaje správne?**\n` +
+            `- **"pošli"** — odoslať email\n` +
+            `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
+            `- **"zmeň predmet na..."** — zmeniť predmet\n` +
+            `- **"zmeň text na..."** — zmeniť obsah\n` +
+            `- **"zruš"** — zrušiť email`,
             route, updatedMessages, convId
           );
         } catch {
@@ -276,18 +285,23 @@ PRÍKLADY:
         }
 
         pendingEmailRef.current = {
-          to: parsed.to,
+          to: parsed.to!,
           subject,
           body,
           mailbox: parsed.mailbox,
         };
 
         emailReply(
-          `**Návrh emailu:**\n\n` +
-          `**Komu:** ${parsed.to}\n` +
-          `**Predmet:** ${subject}\n\n` +
+          `**Skontroluj návrh emailu:**\n\n` +
+          `📬 **Komu:** ${parsed.to}\n` +
+          `📝 **Predmet:** ${subject}\n\n` +
           `---\n\n${body}\n\n---\n\n` +
-          `Povedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+          `**Sú údaje správne?**\n` +
+          `- **"pošli"** — odoslať email\n` +
+          `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
+          `- **"zmeň predmet na..."** — zmeniť predmet\n` +
+          `- **"zmeň text na..."** — zmeniť obsah\n` +
+          `- **"zruš"** — zrušiť email`,
           route, updatedMessages, convId
         );
       } catch {
@@ -459,8 +473,82 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
       setMessages(updated);
       setIsStreaming(true);
 
-      // Check for pending email confirmation BEFORE routing
+      // Check for pending email modifications or confirmation
       const lowerTrimmed = content.toLowerCase().trim();
+
+      if (pendingEmailRef.current) {
+        const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
+        const pending = pendingEmailRef.current;
+
+        // Cancel
+        if (/^(nie|cancel|zrus|zruš|nechci|stop)$/i.test(lowerTrimmed)) {
+          setCurrentRoute(emailRoute);
+          pendingEmailRef.current = null;
+          emailReply("Email zrušený.", emailRoute, updated, conversationId);
+          setIsStreaming(false);
+          return;
+        }
+
+        // Modify address
+        const addrChange = content.match(/zme[nň]\s*adres\w*\s*na\s+(.+)/i)
+          || content.match(/komu\s*(?:na|:)\s*(.+)/i)
+          || content.match(/na\s+([\w.-]+@[\w.-]+\.\w{2,})/i);
+        if (addrChange) {
+          const newParsed = parseEmailCommand(`posli mail ${addrChange[1]}`);
+          const newTo = content.match(/[\w.-]+@[\w.-]+\.\w{2,}/)?.[0] || newParsed?.to;
+          if (newTo) {
+            setCurrentRoute(emailRoute);
+            pending.to = newTo;
+            emailReply(
+              `**Adresa zmenená!** Aktualizovaný návrh:\n\n` +
+              `📬 **Komu:** ${pending.to}\n` +
+              `📝 **Predmet:** ${pending.subject}\n\n` +
+              `---\n\n${pending.body}\n\n---\n\n` +
+              `**"pošli"** — odoslať | **"zruš"** — zrušiť`,
+              emailRoute, updated, conversationId
+            );
+            setIsStreaming(false);
+            return;
+          }
+        }
+
+        // Modify subject
+        const subjChange = content.match(/zme[nň]\s*predmet\w*\s*na\s+(.+)/i)
+          || content.match(/predmet\s*(?:bude|:)\s*(.+)/i);
+        if (subjChange) {
+          setCurrentRoute(emailRoute);
+          pending.subject = subjChange[1].trim();
+          emailReply(
+            `**Predmet zmenený!** Aktualizovaný návrh:\n\n` +
+            `📬 **Komu:** ${pending.to}\n` +
+            `📝 **Predmet:** ${pending.subject}\n\n` +
+            `---\n\n${pending.body}\n\n---\n\n` +
+            `**"pošli"** — odoslať | **"zruš"** — zrušiť`,
+            emailRoute, updated, conversationId
+          );
+          setIsStreaming(false);
+          return;
+        }
+
+        // Modify body
+        const bodyChange = content.match(/zme[nň]\s*(?:text|obsah|telo)\w*\s*na\s+(.+)/i)
+          || content.match(/(?:text|obsah|telo)\s*(?:bude|:)\s*(.+)/i);
+        if (bodyChange) {
+          setCurrentRoute(emailRoute);
+          pending.body = bodyChange[1].trim();
+          emailReply(
+            `**Text zmenený!** Aktualizovaný návrh:\n\n` +
+            `📬 **Komu:** ${pending.to}\n` +
+            `📝 **Predmet:** ${pending.subject}\n\n` +
+            `---\n\n${pending.body}\n\n---\n\n` +
+            `**"pošli"** — odoslať | **"zruš"** — zrušiť`,
+            emailRoute, updated, conversationId
+          );
+          setIsStreaming(false);
+          return;
+        }
+      }
+
       if (pendingEmailRef.current && /^(ano|ok|posli|pošli|potvrd|potvrdzujem|odosli|odošli|send|yes|potvrď)$/i.test(lowerTrimmed)) {
         const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
         setCurrentRoute(emailRoute);
@@ -532,7 +620,16 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
 
             pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
             emailReply(
-              `**Návrh emailu:**\n\n**Komu:** ${resolvedTo}\n**Predmet:** ${subject}\n\n---\n\n${body}\n\n---\n\nPovedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+              `**Skontroluj návrh emailu:**\n\n` +
+              `📬 **Komu:** ${resolvedTo}\n` +
+              `📝 **Predmet:** ${subject}\n\n` +
+              `---\n\n${body}\n\n---\n\n` +
+              `**Sú údaje správne?**\n` +
+              `- **"pošli"** — odoslať email\n` +
+              `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
+              `- **"zmeň predmet na..."** — zmeniť predmet\n` +
+              `- **"zmeň text na..."** — zmeniť obsah\n` +
+              `- **"zruš"** — zrušiť email`,
               emailRoute, updated, conversationId
             );
           } catch {
