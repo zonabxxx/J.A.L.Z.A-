@@ -28,6 +28,14 @@ export function useChat(activeAgent: Agent | null) {
     mailbox: string;
   } | null>(null);
 
+  const draftEmailRef = useRef<{
+    originalText: string;
+    subject: string | null;
+    body: string | null;
+    mailbox: string;
+    missing: string[];
+  } | null>(null);
+
   const debouncedSave = useCallback(
     (msgs: ChatMessage[], convId: string | null) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -172,10 +180,18 @@ export function useChat(activeAgent: Agent | null) {
       const parsed = parseEmailCommand(userText);
 
       if (!parsed.to) {
+        // Store draft and ask for recipient
+        draftEmailRef.current = {
+          originalText: userText,
+          subject: parsed.subject,
+          body: parsed.body,
+          mailbox: parsed.mailbox,
+          missing: parsed.missing,
+        };
         const contacts = getContacts();
-        const contactList = contacts.map((c) => `- **${c.name}** → ${c.email} (povedz: "${c.aliases[0]}")`).join("\n");
+        const contactList = contacts.map((c) => `- **${c.name}** → ${c.email}`).join("\n");
         emailReply(
-          `Nerozpoznal som komu chceš poslať mail.\n\n**Známe kontakty:**\n${contactList}\n\nSkús: "Pošli mail **Jurajovi**, predmet Test, text Ahoj"`,
+          `Na akú adresu mám email poslať?\n\nNapíš adresu alebo meno kontaktu:\n\n${contactList}`,
           route, updatedMessages, convId
         );
         return;
@@ -439,8 +455,60 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
         return;
       }
 
+      // Check if user is completing a draft email (providing missing address/info)
+      if (draftEmailRef.current) {
+        const draft = draftEmailRef.current;
+        const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
+        setCurrentRoute(emailRoute);
+
+        // Check if user provided an email address
+        const emailMatch = content.match(/[\w.-]+@[\w.-]+\.\w+/);
+        const contact = (() => { try { return parseEmailCommand(`posli mail ${content}`); } catch { return null; } })();
+        const resolvedTo = emailMatch?.[0] || contact?.to || null;
+
+        if (resolvedTo) {
+          draftEmailRef.current = null;
+          // Now run through Gemini to clean up the full text
+          const fullText = `${draft.originalText} na adresu ${resolvedTo}`;
+          try {
+            const geminiRes = await fetch("/api/gemini", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.\n\nPRAVIDLÁ:\n1. Oprav preklepy a skomolené slová\n2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)\n3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"\n4. Odpovedz IBA v JSON formáte:\n{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}`,
+                prompt: fullText,
+              }),
+            });
+
+            let subject = draft.subject || "Bez predmetu";
+            let body = draft.body || fullText;
+
+            if (geminiRes.ok) {
+              const gd = await geminiRes.json();
+              const jm = (gd.text || "").match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
+              if (jm) {
+                try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {}
+              }
+            }
+
+            pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
+            emailReply(
+              `**Návrh emailu:**\n\n**Komu:** ${resolvedTo}\n**Predmet:** ${subject}\n\n---\n\n${body}\n\n---\n\nPovedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+              emailRoute, updated, conversationId
+            );
+          } catch {
+            emailReply("Nepodarilo sa spracovať email.", emailRoute, updated, conversationId);
+          }
+          setIsStreaming(false);
+          return;
+        } else {
+          // Still can't resolve, cancel draft
+          draftEmailRef.current = null;
+        }
+      }
+
       // Cancel pending email if user starts a different topic
-      if (pendingEmailRef.current && !/mail|email|posli|pošli/i.test(lowerTrimmed)) {
+      if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd/i.test(lowerTrimmed)) {
         pendingEmailRef.current = null;
       }
 
