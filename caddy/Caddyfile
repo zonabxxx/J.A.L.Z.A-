@@ -1,0 +1,4 @@
+:443 {
+    tls /etc/caddy/server.crt /etc/caddy/server.key
+    reverse_proxy host.docker.internal:3001
+}

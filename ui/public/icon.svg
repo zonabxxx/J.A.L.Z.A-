@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="108" fill="#09090b"/>
+  <rect x="96" y="140" width="320" height="240" rx="40" fill="#2563eb" opacity="0.2"/>
+  <rect x="96" y="140" width="320" height="240" rx="40" fill="none" stroke="#2563eb" stroke-width="8"/>
+  <circle cx="200" cy="250" r="30" fill="#60a5fa"/>
+  <circle cx="312" cy="250" r="30" fill="#60a5fa"/>
+  <rect x="180" y="310" width="152" height="16" rx="8" fill="#60a5fa" opacity="0.6"/>
+  <rect x="232" y="80" width="48" height="60" rx="8" fill="#2563eb"/>
+  <circle cx="256" cy="72" r="20" fill="#60a5fa"/>
+  <rect x="56" y="220" width="40" height="60" rx="12" fill="#2563eb" opacity="0.6"/>
+  <rect x="416" y="220" width="40" height="60" rx="12" fill="#2563eb" opacity="0.6"/>
+  <text x="256" y="440" text-anchor="middle" font-family="system-ui" font-weight="bold" font-size="48" fill="#a1a1aa">J.A.L.Z.A.</text>
+</svg>

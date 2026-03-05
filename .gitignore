@@ -1,0 +1,39 @@
+# Dependencies
+ui/node_modules/
+ui/.next/
+
+# Database files (large)
+knowledge_bases/*/knowledge.db
+conversations.db
+
+# Config with credentials
+config.json
+
+# Logs
+*.log
+logs/
+
+# Cache
+voice_cache/
+tmp/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Certificates / keys
+caddy/*.key
+caddy/*.crt
+caddy/*.csr
+caddy/*.srl
+
+# Memory DB (personal data)
+memory/jalza.db
+
+# Knowledge DB (too large)
+knowledge/knowledge.db
