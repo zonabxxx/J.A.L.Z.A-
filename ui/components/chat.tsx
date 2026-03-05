@@ -45,6 +45,7 @@ export default function Chat({
   onMenuToggle,
 }: Props) {
   const [input, setInput] = useState("");
+  const [interimText, setInterimText] = useState("");
   const [features, setFeatures] = useState(getFeatures());
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -249,24 +250,35 @@ export default function Chat({
           {features.voiceInput && (
             <VoiceButton
               onTranscript={(text) => {
+                setInterimText("");
                 setInput((prev) => (prev ? prev + " " + text : text));
               }}
+              onInterim={(text) => setInterimText(text)}
               disabled={isStreaming}
             />
           )}
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              activeAgent
-                ? `Opýtaj sa na ${activeAgent.name}...`
-                : "Napíš správu..."
-            }
-            rows={1}
-            className="flex-1 bg-transparent outline-none resize-none text-sm py-1.5 max-h-32"
-          />
+          <div className="flex-1 relative">
+            {interimText && (
+              <div className="absolute -top-12 left-0 right-0 bg-zinc-800/95 backdrop-blur border border-red-500/30 rounded-lg px-3 py-2 text-sm text-zinc-200 shadow-lg z-10">
+                <span className="text-red-400 mr-1.5 animate-pulse">●</span>
+                {interimText}
+              </div>
+            )}
+            <textarea
+              ref={inputRef}
+              value={interimText || input}
+              onChange={(e) => { if (!interimText) setInput(e.target.value); }}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                activeAgent
+                  ? `Opýtaj sa na ${activeAgent.name}...`
+                  : "Napíš správu..."
+              }
+              rows={1}
+              className={`w-full bg-transparent outline-none resize-none text-sm py-1.5 max-h-32 ${interimText ? "text-red-300/80 italic" : ""}`}
+              readOnly={!!interimText}
+            />
+          </div>
           <button
             onClick={handleSubmit}
             disabled={isStreaming || !input.trim()}
