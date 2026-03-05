@@ -10,22 +10,40 @@ import {
 } from "./chat-storage";
 import { parseEmailCommand, getContacts } from "./email-parser";
 
-const GEMINI_EMAIL_PROMPT = `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Text je často chybný, skomolený a obsahuje výplňové slová.
+const GEMINI_EMAIL_SYSTEM = `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi a výplňovými slovami.
 
-TVOJA ÚLOHA: Pochop ZÁMER používateľa a vytvor z toho čistý email.
+TVOJA ÚLOHA: Pochop ZÁMER a odpovedz v JSON.
 
-DÔLEŽITÉ PRAVIDLÁ:
-1. PREDMET (subject) — extrahuj len PODSTATU, nie celú vetu. Príklady:
-   - "predmet mailu je test" → subject: "Test"
-   - "na predmet mailu je faktúra" → subject: "Faktúra"
-   - "s tým že predmet bude ponuka služieb" → subject: "Ponuka služieb"
-   - "predmet test a telo" → subject: "Test"
-2. TEXT EMAILU (body) — extrahuj len obsah emailu, nie inštrukcie. Napíš ako normálny email s pozdravom a podpisom "Juraj":
-   - "telo mailu je tiež test" → body: "Ahoj,\\n\\ntoto je test.\\n\\nS pozdravom,\\nJuraj"
-   - "text bude testujem testovaného" → body: "Ahoj,\\n\\ntestujem.\\n\\nS pozdravom,\\nJuraj"
-3. Ignoruj slová ako: "mailu je", "cez telo", "na predmet", "s tým že" — to sú inštrukcie, nie obsah
-4. Odpovedz IBA v JSON formáte, nič iné:
-{"subject":"čistý krátky predmet","body":"čistý text emailu s pozdravom"}`;
+KROK 1 — Rozpoznaj zámer (intent):
+- "send" = chce POSLAŤ / napísať / odoslať email (akýkoľvek tvar: poslať, posli, napíš, odošli, chcem poslat mail...)
+- "list" = chce VIDIEŤ / skontrolovať / prečítať svoje emaily
+- "search" = chce HĽADAŤ konkrétny email
+- "cleanup" = chce VYMAZAŤ spam / staré / marketing emaily
+- "read" = chce PREČÍTAŤ konkrétny email (číslo)
+- "reply" = chce ODPOVEDAŤ na email
+- "unknown" = nejasné
+
+KROK 2 — Pre "send" extrahuj:
+- subject: len PODSTATA predmetu (nie "predmet mailu je test" → len "Test")
+- body: len OBSAH emailu napísaný ako normálny email s pozdravom a podpisom "Juraj"
+- Ignoruj inštrukčné slová: "mailu je", "cez telo", "na predmet", "s tým že"
+
+ODPOVEDZ IBA JSON:
+- Send: {"intent":"send","subject":"Test","body":"Ahoj,\\ntoto je test.\\nS pozdravom,\\nJuraj"}
+- List: {"intent":"list","today":true}
+- Search: {"intent":"search","query":"faktúra"}
+- Cleanup: {"intent":"cleanup"}
+- Read: {"intent":"read","number":3}
+- Reply: {"intent":"reply","number":1}
+- Unknown: {"intent":"unknown"}
+
+PRÍKLADY:
+- "chcem poslať testovací mail predmet test telo testujem" → {"intent":"send","subject":"Test","body":"Ahoj,\\ntestujem.\\nS pozdravom,\\nJuraj"}
+- "aké maily mi dnes prišli" → {"intent":"list","today":true}
+- "hľadaj mail od Juraja o faktúre" → {"intent":"search","query":"Juraj faktúra"}
+- "prečítaj mail číslo 3" → {"intent":"read","number":3}
+- "vymaž spam" → {"intent":"cleanup"}
+- "napíš mail na adresu juraj @ adresu sk predmet test telo ahoj" → {"intent":"send","subject":"Test","body":"Ahoj,\\n\\nahoj.\\n\\nS pozdravom,\\nJuraj"}`;
 
 export interface ChatMessage extends Message {
   route?: RouteResult;
@@ -177,16 +195,46 @@ export function useChat(activeAgent: Agent | null) {
       .join("\n\n");
   };
 
+  const showEmailPreview = (
+    to: string, subject: string, body: string, mailbox: string,
+    route: RouteResult, msgs: ChatMessage[], convId: string | null
+  ) => {
+    pendingEmailRef.current = { to, subject, body, mailbox };
+    emailReply(
+      `**Skontroluj návrh emailu:**\n\n` +
+      `📬 **Komu:** ${to}\n` +
+      `📝 **Predmet:** ${subject}\n\n` +
+      `---\n\n${body}\n\n---\n\n` +
+      `**Sú údaje správne?**\n` +
+      `- **"pošli"** — odoslať\n` +
+      `- **"zmeň adresu/predmet/text na..."** — upraviť\n` +
+      `- **"zruš"** — zrušiť`,
+      route, msgs, convId
+    );
+  };
+
+  const callGemini = async (prompt: string): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemPrompt: GEMINI_EMAIL_SYSTEM, prompt }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.text || null;
+    } catch { return null; }
+  };
+
   const handleEmailInChat = async (
     userText: string,
     route: RouteResult,
     updatedMessages: ChatMessage[],
     convId: string | null
   ) => {
-    const lower = userText.toLowerCase();
     const mailbox = detectMailbox(userText);
 
-    // If there's a draft waiting for an address, try to resolve from this input
+    // If draft is waiting for address, try to resolve
     if (draftEmailRef.current && draftEmailRef.current.missing.includes("adresa príjemcu")) {
       const emailMatch = userText.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
       const parsed = parseEmailCommand(`posli mail ${userText}`);
@@ -195,134 +243,61 @@ export function useChat(activeAgent: Agent | null) {
       if (resolvedTo) {
         const draft = draftEmailRef.current;
         draftEmailRef.current = null;
-        const fullText = `${draft.originalText} na adresu ${resolvedTo}`;
-        try {
-          const geminiRes = await fetch("/api/gemini", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemPrompt: GEMINI_EMAIL_PROMPT,
-                prompt: fullText,
-              }),
-          });
-          let subject = draft.subject || "Bez predmetu";
-          let body = draft.body || fullText;
-          if (geminiRes.ok) {
-            const gd = await geminiRes.json();
-            const jm = (gd.text || "").match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
-            if (jm) {
-              try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {}
-            }
-          }
-          pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
-          emailReply(
-            `**Skontroluj návrh emailu:**\n\n` +
-            `📬 **Komu:** ${resolvedTo}\n` +
-            `📝 **Predmet:** ${subject}\n\n` +
-            `---\n\n${body}\n\n---\n\n` +
-            `**Sú údaje správne?**\n` +
-            `- **"pošli"** — odoslať email\n` +
-            `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
-            `- **"zmeň predmet na..."** — zmeniť predmet\n` +
-            `- **"zmeň text na..."** — zmeniť obsah\n` +
-            `- **"zruš"** — zrušiť email`,
-            route, updatedMessages, convId
-          );
-        } catch {
-          emailReply("Nepodarilo sa spracovať email.", route, updatedMessages, convId);
+        const geminiText = await callGemini(`${draft.originalText} na adresu ${resolvedTo}`);
+        let subject = draft.subject || "Bez predmetu";
+        let body = draft.body || draft.originalText;
+        if (geminiText) {
+          const jm = geminiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
+          if (jm) { try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {} }
         }
+        showEmailPreview(resolvedTo, subject, body, draft.mailbox, route, updatedMessages, convId);
         return;
       }
     }
 
-    const isSend = /posli|pošli|poslat|poslať|odosli|odošli|odoslat|odoslať|napisz|napíš|napisat|napísať|send|write\s*mail|write\s*email|chcem\s*posl/i.test(lower);
-    const isReply = /odpoved|odpovedz|reply|reaguj/i.test(lower);
-    const isSearch = /hladaj|hľadaj|najdi|nájdi|search|vyhladaj|vyhľadaj|od\s+\w+.*mail|mail.*od\s+\w+/i.test(lower);
-    const isCleanupExec = /vymaz\s*(ich|to|ich\s*vsetk|všetk)|zmaz\s*(ich|to)|delete\s*them|potvrdzujem/i.test(lower);
-    const isCleanup = /vymaz|vymaž|zmaz|zmaž|cleanup|spam|marketing|upratat|upratať|vycisti|vyčisti/i.test(lower) && !isSend && !isCleanupExec;
-    const isRead = /precitaj|prečítaj|otvor|read|zobraz.*detail|celý\s*mail|cely\s*mail/i.test(lower);
-    // ── SEND EMAIL ──
-    if (isSend && !isReply) {
-      const parsed = parseEmailCommand(userText);
-
-      if (!parsed.to) {
-        // Store draft and ask for recipient
-        draftEmailRef.current = {
-          originalText: userText,
-          subject: parsed.subject,
-          body: parsed.body,
-          mailbox: parsed.mailbox,
-          missing: parsed.missing,
-        };
-        const contacts = getContacts();
-        const contactList = contacts.map((c) => `- **${c.name}** → ${c.email}`).join("\n");
-        emailReply(
-          `Na akú adresu mám email poslať?\n\nNapíš adresu alebo meno kontaktu:\n\n${contactList}`,
-          route, updatedMessages, convId
-        );
-        return;
-      }
-
-      // Use Gemini to understand garbled STT and compose proper email
-      try {
-        const geminiRes = await fetch("/api/gemini", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemPrompt: GEMINI_EMAIL_PROMPT,
-            prompt: userText,
-          }),
-        });
-
-        let subject = parsed.subject || "Bez predmetu";
-        let body = parsed.body || userText;
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const geminiText = geminiData.text || "";
-          const jsonMatch = geminiText.match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
-          if (jsonMatch) {
-            try {
-              const cleaned = JSON.parse(jsonMatch[0]);
-              if (cleaned.subject) subject = cleaned.subject;
-              if (cleaned.body) body = cleaned.body;
-            } catch { /* keep parsed values */ }
-          }
-        }
-
-        pendingEmailRef.current = {
-          to: parsed.to!,
-          subject,
-          body,
-          mailbox: parsed.mailbox,
-        };
-
-        emailReply(
-          `**Skontroluj návrh emailu:**\n\n` +
-          `📬 **Komu:** ${parsed.to}\n` +
-          `📝 **Predmet:** ${subject}\n\n` +
-          `---\n\n${body}\n\n---\n\n` +
-          `**Sú údaje správne?**\n` +
-          `- **"pošli"** — odoslať email\n` +
-          `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
-          `- **"zmeň predmet na..."** — zmeniť predmet\n` +
-          `- **"zmeň text na..."** — zmeniť obsah\n` +
-          `- **"zruš"** — zrušiť email`,
-          route, updatedMessages, convId
-        );
-      } catch {
-        emailReply("Nepodarilo sa spracovať email cez Gemini. Skús to znova.", route, updatedMessages, convId);
-      }
+    // Ask Gemini to understand intent
+    const geminiText = await callGemini(userText);
+    if (!geminiText) {
+      emailReply("Nepodarilo sa spojiť s Gemini. Skontroluj pripojenie.", route, updatedMessages, convId);
       return;
     }
 
-    // ── SEARCH EMAILS ──
-    if (isSearch) {
-      const queryMatch = lower.match(/(?:hladaj|hľadaj|najdi|nájdi|search|vyhladaj|vyhľadaj)\s+(.+)/i)
-        || lower.match(/mail.*od\s+(.+)/i)
-        || lower.match(/od\s+(.+?)(?:\s*mail|\s*$)/i);
-      const query = queryMatch?.[1]?.trim() || userText;
+    let intent: Record<string, unknown> = { intent: "list" };
+    const jsonMatch = geminiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
+    if (jsonMatch) {
+      try { intent = JSON.parse(jsonMatch[0]); } catch {}
+    }
 
+    const action = (intent.intent as string) || "list";
+
+    // ── SEND ──
+    if (action === "send") {
+      const parsed = parseEmailCommand(userText);
+      const to = parsed.to;
+
+      if (!to) {
+        draftEmailRef.current = {
+          originalText: userText,
+          subject: (intent.subject as string) || parsed.subject,
+          body: (intent.body as string) || parsed.body,
+          mailbox,
+          missing: ["adresa príjemcu"],
+        };
+        const contacts = getContacts();
+        const contactList = contacts.map((c) => `- **${c.name}** → ${c.email}`).join("\n");
+        emailReply(`Na akú adresu mám email poslať?\n\n${contactList}`, route, updatedMessages, convId);
+        return;
+      }
+
+      const subject = (intent.subject as string) || parsed.subject || "Bez predmetu";
+      const body = (intent.body as string) || parsed.body || userText;
+      showEmailPreview(to, subject, body, mailbox, route, updatedMessages, convId);
+      return;
+    }
+
+    // ── SEARCH ──
+    if (action === "search") {
+      const query = (intent.query as string) || userText;
       try {
         const res = await fetch("/api/email", {
           method: "POST",
@@ -331,140 +306,65 @@ export function useChat(activeAgent: Agent | null) {
         });
         const data = await res.json();
         const emails = data.emails || [];
-
         if (emails.length === 0) {
           emailReply(`Nenašiel som žiadne emaily pre: "${query}"`, route, updatedMessages, convId);
           return;
         }
-
         const emailContext = formatEmailList(emails);
-        const systemPrompt = `Si emailový asistent. Výsledky vyhľadávania emailov pre "${query}":\n\n${emailContext}\n\nZhrň výsledky prehľadne po slovensky.`;
-
         await streamResponse(
           "/api/chat",
-          { messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userText }] },
+          { messages: [{ role: "system", content: `Výsledky hľadania "${query}":\n\n${emailContext}\n\nZhrň po slovensky.` }, { role: "user", content: userText }] },
           route, updatedMessages, convId
         );
-      } catch {
-        emailReply("Nepodarilo sa vyhľadať emaily.", route, updatedMessages, convId);
-      }
+      } catch { emailReply("Nepodarilo sa vyhľadať emaily.", route, updatedMessages, convId); }
       return;
     }
 
-    // ── CLEANUP EXECUTE ──
-    if (isCleanupExec) {
+    // ── CLEANUP ──
+    if (action === "cleanup") {
       try {
-        const res = await fetch("/api/email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "cleanup_execute" }),
-        });
+        const res = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cleanup", dry_run: true }) });
         const data = await res.json();
-        emailReply(
-          `**Cleanup dokončený!**\n- Vymazaných marketing emailov: ${data.marketing_deleted || data.marketing_found || 0}\n- Vymazaných starých emailov: ${data.old_deleted || data.old_found || 0}\n- Celkom vymazaných: ${data.deleted || 0}`,
-          route, updatedMessages, convId
-        );
-      } catch {
-        emailReply("Nepodarilo sa vymazať emaily.", route, updatedMessages, convId);
-      }
+        emailReply(`**Cleanup analýza:**\n- Marketing: **${data.marketing_found || 0}**\n- Staré (365+ dní): **${data.old_found || 0}**\n\nNapíš **"vymaž ich"** na potvrdenie.`, route, updatedMessages, convId);
+      } catch { emailReply("Nepodarilo sa analyzovať emaily.", route, updatedMessages, convId); }
       return;
     }
 
-    // ── CLEANUP PREVIEW ──
-    if (isCleanup) {
+    // ── READ ──
+    if (action === "read") {
+      const num = (intent.number as number) || 1;
+      const idx = num - 1;
       try {
-        const res = await fetch("/api/email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "cleanup", dry_run: true }),
-        });
-        const data = await res.json();
-        emailReply(
-          `**Cleanup analýza (náhľad):**\n- Marketing emaily na zmazanie: **${data.marketing_found || 0}**\n- Staré emaily (365+ dní): **${data.old_found || 0}**\n\nAk chceš tieto emaily **naozaj vymazať**, napíš: "**vymaz ich**"`,
-          route, updatedMessages, convId
-        );
-      } catch {
-        emailReply("Nepodarilo sa analyzovať emaily na cleanup.", route, updatedMessages, convId);
-      }
-      return;
-    }
-
-    // ── READ SPECIFIC EMAIL ──
-    if (isRead) {
-      const numMatch = lower.match(/(?:precitaj|prečítaj|otvor|zobraz)\s*(?:mail|email)?\s*(?:číslo|cislo|č\.|c\.)?\s*(\d+)/i);
-      if (numMatch) {
-        const idx = parseInt(numMatch[1]) - 1;
         const listRes = await fetch(`/api/email?mailbox=${mailbox}&limit=20`);
         const listData = await listRes.json();
         const emails = listData.emails || [];
         const target = emails[idx];
-        if (target && target.id) {
-          try {
-            const readRes = await fetch("/api/email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "read", mailbox, id: target.id }),
-            });
-            const detail = await readRes.json();
-            const body = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
-            emailReply(
-              `**Od:** ${target.from || target.sender?.emailAddress?.address}\n**Predmet:** ${target.subject}\n**Dátum:** ${target.date || target.receivedDateTime}\n\n---\n\n${body}`,
-              route, updatedMessages, convId
-            );
-          } catch {
-            emailReply("Nepodarilo sa prečítať email.", route, updatedMessages, convId);
-          }
-          return;
+        if (target?.id) {
+          const readRes = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "read", mailbox, id: target.id }) });
+          const detail = await readRes.json();
+          const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
+          emailReply(`**Od:** ${target.from || target.sender?.emailAddress?.address}\n**Predmet:** ${target.subject}\n**Dátum:** ${target.date || target.receivedDateTime}\n\n---\n\n${bodyText}`, route, updatedMessages, convId);
+        } else {
+          emailReply(`Email č. ${num} neexistuje. Najprv si nechaj zobraziť maily.`, route, updatedMessages, convId);
         }
-      }
+      } catch { emailReply("Nepodarilo sa prečítať email.", route, updatedMessages, convId); }
+      return;
     }
 
-    // ── DEFAULT: FETCH & SUMMARIZE ──
+    // ── LIST (default) ──
     try {
-      const todayCheck = /dnes|today|dnesn/i.test(lower);
-      const allMailboxes = /vsetk|všetk|obe|obidv|all/i.test(lower);
+      const today = !!(intent.today);
+      const res = await fetch(`/api/email?today=${today}&limit=20&mailbox=${mailbox}`);
+      const data = await res.json();
+      if (data.error) { emailReply(`Chyba: ${data.error}`, route, updatedMessages, convId); return; }
+      const emails = data.emails || [];
+      if (emails.length === 0) { emailReply(today ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.", route, updatedMessages, convId); return; }
 
-      type EmailEntry = { from?: string; subject?: string; date?: string; receivedDateTime?: string; snippet?: string; bodyPreview?: string; sender?: { emailAddress?: { address?: string } } };
-      let allEmails: EmailEntry[] = [];
-
-      if (allMailboxes) {
-        const [r1, r2, r3] = await Promise.all([
-          fetch(`/api/email?today=${todayCheck}&limit=10&mailbox=personal`).then(r => r.json()),
-          fetch(`/api/email?today=${todayCheck}&limit=10&mailbox=adsun`).then(r => r.json()),
-          fetch(`/api/email?today=${todayCheck}&limit=10&mailbox=juraj`).then(r => r.json()),
-        ]);
-        if (r1.emails) allEmails.push(...r1.emails.map((e: EmailEntry) => ({ ...e, _box: "osobný" })));
-        if (r2.emails) allEmails.push(...r2.emails.map((e: EmailEntry) => ({ ...e, _box: "info@adsun.sk" })));
-        if (r3.emails) allEmails.push(...r3.emails.map((e: EmailEntry) => ({ ...e, _box: "juraj@adsun.sk" })));
-      } else {
-        const res = await fetch(`/api/email?today=${todayCheck}&limit=20&mailbox=${mailbox}`);
-        const data = await res.json();
-        if (data.error) {
-          emailReply(`Chyba pri načítaní emailov: ${data.error}`, route, updatedMessages, convId);
-          return;
-        }
-        allEmails = data.emails || [];
-      }
-
-      if (allEmails.length === 0) {
-        emailReply(
-          todayCheck ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.",
-          route, updatedMessages, convId
-        );
-        return;
-      }
-
-      const emailContext = formatEmailList(allEmails);
+      const emailContext = formatEmailList(emails);
       const mailboxLabel = mailbox === "adsun" ? "info@adsun.sk" : mailbox === "juraj" ? "juraj@adsun.sk" : "osobná schránka";
-
-      const systemPrompt = `Si emailový asistent J.A.L.Z.A. Schránka: ${allMailboxes ? "všetky" : mailboxLabel}.
-Tu sú emaily:\n\n${emailContext}\n\n
-Odpovedz stručne po slovensky. Zhrň emaily prehľadne, použi čísla a tučné písmo pre mená/predmety.
-Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1', 'pošli mail na...', 'hľadaj maily od...', 'vymaž spam'"`;
-
       await streamResponse(
         "/api/chat",
-        { messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userText }] },
+        { messages: [{ role: "system", content: `Emailový asistent. Schránka: ${mailboxLabel}.\nEmaily:\n\n${emailContext}\n\nZhrň prehľadne po slovensky. Na konci pripomeň dostupné príkazy.` }, { role: "user", content: userText }] },
         route, updatedMessages, convId
       );
     } catch {
@@ -594,73 +494,21 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
         return;
       }
 
-      // Check if user is completing a draft email (providing missing address/info)
+      // If draft exists, force email route so handleEmailInChat can resolve it
       if (draftEmailRef.current) {
-        const draft = draftEmailRef.current;
         const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
-
-        // Try to extract email address from user's input
-        const emailMatch = content.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
-        const parsed = parseEmailCommand(`posli mail ${content}`);
-        const resolvedTo = emailMatch?.[0] || parsed?.to || null;
-
-        if (resolvedTo) {
-          setCurrentRoute(emailRoute);
-          draftEmailRef.current = null;
-          const fullText = `${draft.originalText} na adresu ${resolvedTo}`;
-          try {
-            const geminiRes = await fetch("/api/gemini", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                systemPrompt: GEMINI_EMAIL_PROMPT,
-                prompt: fullText,
-              }),
-            });
-
-            let subject = draft.subject || "Bez predmetu";
-            let body = draft.body || fullText;
-
-            if (geminiRes.ok) {
-              const gd = await geminiRes.json();
-              const jm = (gd.text || "").match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
-              if (jm) {
-                try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {}
-              }
-            }
-
-            pendingEmailRef.current = { to: resolvedTo, subject, body, mailbox: draft.mailbox };
-            emailReply(
-              `**Skontroluj návrh emailu:**\n\n` +
-              `📬 **Komu:** ${resolvedTo}\n` +
-              `📝 **Predmet:** ${subject}\n\n` +
-              `---\n\n${body}\n\n---\n\n` +
-              `**Sú údaje správne?**\n` +
-              `- **"pošli"** — odoslať email\n` +
-              `- **"zmeň adresu na..."** — zmeniť príjemcu\n` +
-              `- **"zmeň predmet na..."** — zmeniť predmet\n` +
-              `- **"zmeň text na..."** — zmeniť obsah\n` +
-              `- **"zruš"** — zrušiť email`,
-              emailRoute, updated, conversationId
-            );
-          } catch {
-            emailReply("Nepodarilo sa spracovať email.", emailRoute, updated, conversationId);
-          }
+        setCurrentRoute(emailRoute);
+        try {
+          await handleEmailInChat(content, emailRoute, updated, conversationId);
+        } catch {
+          emailReply("Chyba pri spracovaní emailu.", emailRoute, updated, conversationId);
+        } finally {
           setIsStreaming(false);
-          return;
         }
-
-        // User asked a question or said something that's NOT a new topic — keep draft alive
-        const isAboutEmail = /mail|email|adres|komu|kam|posla|pošl|na\s+ak|zrus|zruš|cancel/i.test(lowerTrimmed);
-        if (isAboutEmail) {
-          // Keep draft, let normal routing handle it but email handler will see draft
-        } else if (/^(nie|cancel|zrus|zruš|nechci|stop)$/i.test(lowerTrimmed)) {
-          draftEmailRef.current = null;
-        }
-        // For anything else, keep draft alive — don't cancel!
+        return;
       }
 
-      // Cancel pending email only if clearly different topic
+      // Cancel pending email only on clearly different topic
       if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd|potvrď|odosli|odošli|send|yes/i.test(lowerTrimmed)) {
         pendingEmailRef.current = null;
       }
