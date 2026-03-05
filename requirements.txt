@@ -1,0 +1,7 @@
+requests
+python-telegram-bot
+duckduckgo-search
+pydantic
+numpy
+cryptography
+beautifulsoup4
