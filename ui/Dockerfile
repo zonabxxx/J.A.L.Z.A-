@@ -1,13 +1,9 @@
 FROM node:20-alpine AS base
 
-FROM base AS deps
-WORKDIR /app
-COPY ui/package.json ui/package-lock.json ./
-RUN npm ci --omit=dev
-
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
 COPY ui/ .
 RUN npm run build
 
