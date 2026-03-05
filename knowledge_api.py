@@ -14,7 +14,7 @@ import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from knowledge_base import KnowledgeBase, list_knowledge_bases
-from specialist_agent import ask_specialist, AGENTS
+from specialist_agent import ask_specialist, ask_multi_kb, search_multi_kb, build_multi_kb_context, AGENTS
 
 PORT = 8765
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -271,10 +271,17 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": f"Agent {cfg['name']} nemá znalosti. Spusti learn."}, 400)
                 return
 
-            answer = ask_specialist(kb, question, cfg.get("system_prompt", ""))
+            linked = cfg.get("linked_kbs", [])
+            budget = cfg.get("context_budget", 6)
+            if linked:
+                answer = ask_multi_kb(kb, linked, question, cfg.get("system_prompt", ""), context_budget=budget)
+            else:
+                answer = ask_specialist(kb, question, cfg.get("system_prompt", ""))
+
             self._send_json({
                 "agent": agent_key,
                 "agent_name": cfg["name"],
+                "linked_kbs": linked,
                 "answer": answer,
                 "sources": stats["sources"],
             })
@@ -306,21 +313,33 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
             cfg = AGENTS[agent_key]
             kb = KnowledgeBase(cfg["name"])
-            results = kb.search(question, top_k=top_k)
+            linked = cfg.get("linked_kbs", [])
+            budget = cfg.get("context_budget", top_k)
 
-            context = f"ZNALOSTNÁ DATABÁZA: {cfg['name']}\n\n"
-            for i, r in enumerate(results, 1):
-                context += f"--- Zdroj {i} (relevancia: {r['score']:.2f}) ---\n"
-                context += f"Titulok: {r['title']}\n"
-                context += f"URL: {r['url']}\n"
-                context += f"{r['content']}\n\n"
+            if linked:
+                results = search_multi_kb(kb, linked, question, budget)
+                context = build_multi_kb_context(results)
+                used_kbs = list({r.get("_source_kb", cfg["name"]) for r in results})
+            else:
+                results = kb.search(question, top_k=top_k)
+                context = f"ZNALOSTNÁ DATABÁZA: {cfg['name']}\n\n"
+                for i, r in enumerate(results, 1):
+                    context += f"--- Zdroj {i} (relevancia: {r['score']:.2f}) ---\n"
+                    context += f"Titulok: {r['title']}\n"
+                    context += f"URL: {r['url']}\n"
+                    context += f"{r['content']}\n\n"
+                used_kbs = [cfg["name"]]
 
             self._send_json({
                 "agent": agent_key,
                 "agent_name": cfg["name"],
+                "linked_kbs": linked,
+                "used_kbs": used_kbs,
                 "system_prompt": cfg.get("system_prompt", ""),
                 "context": context,
                 "sources": kb.get_stats()["sources"],
+                "context_chunks": len(results),
+                "context_budget": budget,
             })
 
         elif self.path == "/refresh":
@@ -401,6 +420,10 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                                 "účtovn", "uctovn", "daňov", "danov"],
                 "3d_tlac": ["3d tlač", "3d tlac", "multiboard", "filament",
                             "pla", "petg", "tlačiareň", "tlaciaren", "slicer", "stl"],
+                "adsun_dopyty": ["adsun", "dopyt", "dopyty", "polep", "fóli",
+                                 "svetelná reklam", "svetelna reklam", "billboard",
+                                 "reklam", "tlač", "tlac", "banner",
+                                 "info@adsun", "wrapboys"],
             }
             detected = ""
             for key, triggers in TRIGGERS.items():
@@ -411,10 +434,24 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             if detected and detected in AGENTS:
                 kb = KnowledgeBase(AGENTS[detected]["name"])
                 stats = kb.get_stats()
+                agent_cfg = AGENTS[detected]
+                linked = agent_cfg.get("linked_kbs", [])
+                has_knowledge = stats["chunks"] > 0
+                if not has_knowledge and linked:
+                    for lkb_name in linked:
+                        try:
+                            lkb = KnowledgeBase(lkb_name)
+                            if lkb.get_stats()["chunks"] > 0:
+                                has_knowledge = True
+                                break
+                        except Exception:
+                            continue
                 self._send_json({
                     "agent": detected,
-                    "name": AGENTS[detected]["name"],
-                    "has_knowledge": stats["chunks"] > 0,
+                    "name": agent_cfg["name"],
+                    "has_knowledge": has_knowledge,
+                    "linked_kbs": linked,
+                    "context_budget": agent_cfg.get("context_budget", 6),
                 })
             else:
                 self._send_json({"agent": None})
@@ -497,6 +534,89 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             info = kb.get_stats()
             self._send_json({"agent": agent_key, "new": stats, "total": info})
 
+        elif self.path == "/agents/link":
+            body = self._read_body()
+            agent_key = body.get("agent", "")
+            action = body.get("action", "list")
+
+            if agent_key and agent_key not in AGENTS:
+                self._send_json({"error": f"Neznámy agent: {agent_key}"}, 400)
+                return
+
+            if action == "list":
+                result = {}
+                for key, agent_cfg in AGENTS.items():
+                    kb = KnowledgeBase(agent_cfg["name"])
+                    stats = kb.get_stats()
+                    result[key] = {
+                        "name": agent_cfg["name"],
+                        "linked_kbs": agent_cfg.get("linked_kbs", []),
+                        "context_budget": agent_cfg.get("context_budget", 6),
+                        "chunks": stats["chunks"],
+                        "sources": stats["sources"],
+                    }
+                self._send_json({"agents": result})
+
+            elif action == "set":
+                linked_kbs = body.get("linked_kbs", [])
+                budget = body.get("context_budget")
+
+                AGENTS[agent_key]["linked_kbs"] = linked_kbs
+                if budget is not None:
+                    AGENTS[agent_key]["context_budget"] = int(budget)
+
+                cfg = load_config()
+                if agent_key in cfg.get("custom_agents", {}):
+                    cfg["custom_agents"][agent_key]["linked_kbs"] = linked_kbs
+                    if budget is not None:
+                        cfg["custom_agents"][agent_key]["context_budget"] = int(budget)
+                    save_config(cfg)
+
+                self._send_json({
+                    "status": "updated",
+                    "agent": agent_key,
+                    "linked_kbs": linked_kbs,
+                    "context_budget": AGENTS[agent_key].get("context_budget", 6),
+                })
+
+            elif action == "add":
+                kb_name = body.get("kb_name", "")
+                if not kb_name:
+                    self._send_json({"error": "kb_name required"}, 400)
+                    return
+                linked = AGENTS[agent_key].get("linked_kbs", [])
+                if kb_name not in linked:
+                    linked.append(kb_name)
+                    AGENTS[agent_key]["linked_kbs"] = linked
+                    cfg = load_config()
+                    if agent_key in cfg.get("custom_agents", {}):
+                        cfg["custom_agents"][agent_key]["linked_kbs"] = linked
+                        save_config(cfg)
+                self._send_json({
+                    "status": "linked",
+                    "agent": agent_key,
+                    "linked_kbs": linked,
+                })
+
+            elif action == "remove":
+                kb_name = body.get("kb_name", "")
+                linked = AGENTS[agent_key].get("linked_kbs", [])
+                if kb_name in linked:
+                    linked.remove(kb_name)
+                    AGENTS[agent_key]["linked_kbs"] = linked
+                    cfg = load_config()
+                    if agent_key in cfg.get("custom_agents", {}):
+                        cfg["custom_agents"][agent_key]["linked_kbs"] = linked
+                        save_config(cfg)
+                self._send_json({
+                    "status": "unlinked",
+                    "agent": agent_key,
+                    "linked_kbs": linked,
+                })
+
+            else:
+                self._send_json({"error": f"Unknown action: {action}"}, 400)
+
         elif self.path == "/addagent":
             body = self._read_body()
             key = re.sub(r"[^a-z0-9_]", "_", body.get("key", "").lower())
@@ -552,6 +672,41 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     "smtp_port": email_cfg.get("smtp", {}).get("port", 465),
                     "username": imap.get("username", ""),
                     "has_password": bool(imap.get("password")),
+                },
+            })
+
+            # Email / ADsun (Microsoft Graph)
+            from email_agent import _ms_graph, _ms_graph_juraj
+            adsun_status = "connected" if _ms_graph.configured else "disconnected"
+            integrations.append({
+                "id": "email_adsun",
+                "name": "Email ADsun (Microsoft 365)",
+                "type": "email",
+                "icon": "📧",
+                "status": adsun_status,
+                "provider": "Microsoft Graph API",
+                "account": _ms_graph.mailbox,
+                "capabilities": ["čítanie emailov", "posielanie emailov", "vyhľadávanie", "odpovede na dopyty"],
+                "config": {
+                    "mailbox": _ms_graph.mailbox,
+                    "has_credentials": _ms_graph.configured,
+                },
+            })
+
+            # Email / Juraj (Microsoft Graph)
+            juraj_status = "connected" if _ms_graph_juraj.configured else "disconnected"
+            integrations.append({
+                "id": "email_juraj",
+                "name": "Email Juraj (Microsoft 365)",
+                "type": "email",
+                "icon": "📧",
+                "status": juraj_status,
+                "provider": "Microsoft Graph API",
+                "account": _ms_graph_juraj.mailbox,
+                "capabilities": ["čítanie emailov", "posielanie emailov", "vyhľadávanie"],
+                "config": {
+                    "mailbox": _ms_graph_juraj.mailbox,
+                    "has_credentials": _ms_graph_juraj.configured,
                 },
             })
 
@@ -909,6 +1064,164 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     dry_run=dry_run,
                 )
                 self._send_json(stats)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        # ── ADsun email (info@adsun.sk via Microsoft Graph) ───────
+        elif self.path == "/email/adsun/list":
+            body = self._read_body()
+            try:
+                from email_agent import list_adsun_emails
+                limit = body.get("limit", 10)
+                unseen = body.get("unseen_only", True)
+                results = list_adsun_emails(limit=limit, unseen_only=unseen)
+                if isinstance(results, dict) and "error" in results:
+                    self._send_json(results, 500)
+                else:
+                    self._send_json({"emails": results, "count": len(results), "mailbox": "info@adsun.sk"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/adsun/read":
+            body = self._read_body()
+            message_id = body.get("id", "")
+            if not message_id:
+                self._send_json({"error": "id required"}, 400)
+                return
+            try:
+                from email_agent import read_adsun_email
+                result = read_adsun_email(message_id)
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/adsun/search":
+            body = self._read_body()
+            query = body.get("query", "")
+            limit = body.get("limit", 10)
+            if not query:
+                self._send_json({"error": "query required"}, 400)
+                return
+            try:
+                from email_agent import search_adsun_emails
+                results = search_adsun_emails(query, limit)
+                if isinstance(results, dict) and "error" in results:
+                    self._send_json(results, 500)
+                else:
+                    self._send_json({"emails": results, "count": len(results)})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/adsun/send":
+            body = self._read_body()
+            to_addr = body.get("to", "")
+            subject = body.get("subject", "")
+            text = body.get("body", "")
+            if not to_addr or not subject or not text:
+                self._send_json({"error": "Zadaj to, subject, body"}, 400)
+                return
+            try:
+                from email_agent import send_adsun_email
+                result = send_adsun_email(to_addr, subject, text)
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/adsun/reply":
+            body = self._read_body()
+            message_id = body.get("id", "")
+            text = body.get("body", "")
+            if not message_id or not text:
+                self._send_json({"error": "id a body sú povinné"}, 400)
+                return
+            try:
+                from email_agent import reply_adsun_email
+                result = reply_adsun_email(message_id, text)
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/adsun/check":
+            body = self._read_body()
+            dry_run = body.get("dry_run", True)
+            try:
+                from email_agent import check_adsun_and_reply
+                results = check_adsun_and_reply(dry_run=dry_run)
+                self._send_json({"emails": results, "count": len(results)})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        # ── Juraj email (juraj@adsun.sk via Microsoft Graph) ──────
+        elif self.path == "/email/juraj/list":
+            body = self._read_body()
+            try:
+                from email_agent import list_juraj_emails
+                limit = body.get("limit", 10)
+                unseen = body.get("unseen_only", True)
+                results = list_juraj_emails(limit=limit, unseen_only=unseen)
+                if isinstance(results, dict) and "error" in results:
+                    self._send_json(results, 500)
+                else:
+                    self._send_json({"emails": results, "count": len(results), "mailbox": "juraj@adsun.sk"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/juraj/read":
+            body = self._read_body()
+            message_id = body.get("id", "")
+            if not message_id:
+                self._send_json({"error": "id required"}, 400)
+                return
+            try:
+                from email_agent import read_juraj_email
+                result = read_juraj_email(message_id)
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/juraj/search":
+            body = self._read_body()
+            query = body.get("query", "")
+            limit = body.get("limit", 10)
+            if not query:
+                self._send_json({"error": "query required"}, 400)
+                return
+            try:
+                from email_agent import search_juraj_emails
+                results = search_juraj_emails(query, limit)
+                if isinstance(results, dict) and "error" in results:
+                    self._send_json(results, 500)
+                else:
+                    self._send_json({"emails": results, "count": len(results)})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/juraj/send":
+            body = self._read_body()
+            to_addr = body.get("to", "")
+            subject = body.get("subject", "")
+            text = body.get("body", "")
+            if not to_addr or not subject or not text:
+                self._send_json({"error": "Zadaj to, subject, body"}, 400)
+                return
+            try:
+                from email_agent import send_juraj_email
+                result = send_juraj_email(to_addr, subject, text)
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/email/juraj/reply":
+            body = self._read_body()
+            message_id = body.get("id", "")
+            text = body.get("body", "")
+            if not message_id or not text:
+                self._send_json({"error": "id a body sú povinné"}, 400)
+                return
+            try:
+                from email_agent import reply_juraj_email
+                result = reply_juraj_email(message_id, text)
+                self._send_json(result)
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
 

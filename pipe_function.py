@@ -147,6 +147,11 @@ Formát: jeden fakt na riadok, stručne. Ak nie sú žiadne nové fakty, napíš
                           "marketing", "spam", "stare", "starsie", "nepotrebn",
                           "cleanup", "cisteni", "cistenie", "vymazat"]
 
+    ADSUN_WORDS = ["adsun", "info@adsun", "firemn", "firmov", "pracovn",
+                   "biznis", "business", "obchodn"]
+    JURAJ_ADSUN_WORDS = ["juraj@adsun", "juraj adsun", "mojho adsun", "moj adsun",
+                         "mojom adsun", "mojich adsun"]
+
     @staticmethod
     def _remove_accents(text: str) -> str:
         nfkd = unicodedata.normalize("NFKD", text)
@@ -155,6 +160,14 @@ Formát: jeden fakt na riadok, stručne. Ak nie sú žiadne nové fakty, napíš
     def _needs_search(self, text: str) -> bool:
         lower = self._remove_accents(text.lower())
         return any(t in lower for t in self.SEARCH_TRIGGERS)
+
+    def _is_juraj_adsun_email(self, text: str) -> bool:
+        lower = self._remove_accents(text.lower())
+        return any(w in lower for w in self.JURAJ_ADSUN_WORDS)
+
+    def _is_adsun_email(self, text: str) -> bool:
+        lower = self._remove_accents(text.lower())
+        return any(w in lower for w in self.ADSUN_WORDS)
 
     def _detect_email_action(self, text: str) -> str:
         lower = self._remove_accents(text.lower())
@@ -258,6 +271,185 @@ Formát: jeden fakt na riadok, stručne. Ak nie sú žiadne nové fakty, napíš
                             yield delta
                     except json.JSONDecodeError:
                         pass
+
+    def _handle_juraj_email(self, action: str, user_msg: str):
+        api = self.valves.knowledge_api_url
+
+        if action == "check":
+            def gen():
+                yield "*[📧 Juraj Email — juraj@adsun.sk]*\n\n"
+                yield "_Kontrolujem mailbox juraj@adsun.sk..._\n\n"
+                try:
+                    r = requests.post(
+                        f"{api}/email/juraj/list",
+                        json={"limit": 10, "unseen_only": True},
+                        timeout=30,
+                    )
+                    if not r.ok:
+                        yield f"Chyba: {r.text}"
+                        return
+                    data = r.json()
+                    if data.get("error"):
+                        yield f"Chyba: {data['error']}"
+                        return
+                    emails = data.get("emails", [])
+                    if not emails:
+                        yield "Žiadne nové neprečítané emaily v juraj@adsun.sk."
+                        return
+                    yield f"**Nové emaily: {len(emails)}**\n\n"
+                    for i, e in enumerate(emails[:10], 1):
+                        yield f"---\n**{i}.** "
+                        yield f"**Od:** {e.get('sender', '')} ({e.get('sender_email', '')})\n"
+                        yield f"**Predmet:** {e.get('subject', '?')}\n"
+                        date = e.get("date", "")
+                        if date:
+                            yield f"**Dátum:** {date[:16]}\n"
+                        preview = e.get("body", "")[:200]
+                        if preview:
+                            yield f"**Náhľad:** {preview}...\n\n"
+                except Exception as ex:
+                    yield f"Chyba: {str(ex)}"
+            return gen()
+
+        elif action == "send":
+            def gen():
+                yield "*[📧 Juraj Email — odosielanie z juraj@adsun.sk]*\n\n"
+                try:
+                    r = requests.post(
+                        f"{self.valves.ollama_url}/api/chat",
+                        json={
+                            "model": self.valves.text_model,
+                            "messages": [
+                                {"role": "system", "content": (
+                                    "Si J.A.L.Z.A., asistent Juraja z ADsun s.r.o. Juraj chce poslať email z juraj@adsun.sk. "
+                                    "Z jeho správy zisti: komu, predmet, obsah. "
+                                    "Ak nie je jasné komu alebo čo, opýtaj sa. "
+                                    "Ak je všetko jasné, napíš profesionálny email. "
+                                    "Na konci uveď: KOMU: adresa@email.com | PREDMET: text"
+                                )},
+                                {"role": "user", "content": user_msg},
+                            ],
+                            "stream": True,
+                        },
+                        stream=True, timeout=300,
+                    )
+                    r.raise_for_status()
+                    for line in r.iter_lines():
+                        if line:
+                            data = json.loads(line)
+                            c = data.get("message", {}).get("content", "")
+                            if c:
+                                yield c
+                except Exception as ex:
+                    yield f"\n\nChyba: {str(ex)}"
+            return gen()
+
+        return self._handle_juraj_email("check", user_msg)
+
+    def _handle_adsun_email(self, action: str, user_msg: str):
+        api = self.valves.knowledge_api_url
+
+        if action == "check":
+            def gen():
+                yield "*[📧 ADsun Email — info@adsun.sk]*\n\n"
+                yield "_Kontrolujem mailbox info@adsun.sk..._\n\n"
+                try:
+                    r = requests.post(
+                        f"{api}/email/adsun/list",
+                        json={"limit": 10, "unseen_only": True},
+                        timeout=30,
+                    )
+                    if not r.ok:
+                        yield f"Chyba: {r.text}"
+                        return
+                    data = r.json()
+                    if data.get("error"):
+                        yield f"Chyba: {data['error']}"
+                        return
+                    emails = data.get("emails", [])
+                    if not emails:
+                        yield "Žiadne nové neprečítané emaily v info@adsun.sk."
+                        return
+                    yield f"**Nové emaily: {len(emails)}**\n\n"
+                    for i, e in enumerate(emails[:10], 1):
+                        yield f"---\n**{i}.** "
+                        yield f"**Od:** {e.get('sender', '')} ({e.get('sender_email', '')})\n"
+                        yield f"**Predmet:** {e.get('subject', '?')}\n"
+                        date = e.get("date", "")
+                        if date:
+                            yield f"**Dátum:** {date[:16]}\n"
+                        preview = e.get("body", "")[:200]
+                        if preview:
+                            yield f"**Náhľad:** {preview}...\n\n"
+                except Exception as ex:
+                    yield f"Chyba: {str(ex)}"
+            return gen()
+
+        elif action == "send":
+            def gen():
+                yield "*[📧 ADsun Email — odosielanie z info@adsun.sk]*\n\n"
+                try:
+                    r = requests.post(
+                        f"{self.valves.ollama_url}/api/chat",
+                        json={
+                            "model": self.valves.text_model,
+                            "messages": [
+                                {"role": "system", "content": (
+                                    "Si J.A.L.Z.A., asistent firmy ADsun s.r.o. Juraj chce poslať firemný email z info@adsun.sk. "
+                                    "Z jeho správy zisti: komu, predmet, obsah. "
+                                    "Ak nie je jasné komu alebo čo, opýtaj sa. "
+                                    "Ak je všetko jasné, napíš profesionálny email. "
+                                    "Na konci uveď: KOMU: adresa@email.com | PREDMET: text"
+                                )},
+                                {"role": "user", "content": user_msg},
+                            ],
+                            "stream": True,
+                        },
+                        stream=True, timeout=300,
+                    )
+                    r.raise_for_status()
+                    for line in r.iter_lines():
+                        if line:
+                            data = json.loads(line)
+                            c = data.get("message", {}).get("content", "")
+                            if c:
+                                yield c
+                except Exception as ex:
+                    yield f"\n\nChyba: {str(ex)}"
+            return gen()
+
+        elif action == "search":
+            lower = self._remove_accents(user_msg.lower())
+            for w in self.MAIL_WORDS + self.ADSUN_WORDS + self.MAIL_CHECK_WORDS:
+                lower = lower.replace(w, "")
+            query = lower.strip() or "dopyt"
+
+            def gen():
+                yield "*[📧 ADsun Email — vyhľadávanie]*\n\n"
+                yield f"_Hľadám v info@adsun.sk: \"{query}\"..._\n\n"
+                try:
+                    r = requests.post(
+                        f"{api}/email/adsun/search",
+                        json={"query": query, "limit": 10},
+                        timeout=30,
+                    )
+                    if not r.ok:
+                        yield f"Chyba: {r.text}"
+                        return
+                    data = r.json()
+                    emails = data.get("emails", [])
+                    if not emails:
+                        yield "Nič som nenašiel."
+                        return
+                    yield f"**Výsledky: {len(emails)}**\n\n"
+                    for i, e in enumerate(emails[:10], 1):
+                        yield f"**{i}.** {e.get('sender_email', '')} — {e.get('subject', '')}\n"
+                        yield f"   {e.get('date', '')[:16]}  |  {e.get('body', '')[:100]}...\n\n"
+                except Exception as ex:
+                    yield f"Chyba: {str(ex)}"
+            return gen()
+
+        return self._handle_adsun_email("check", user_msg)
 
     def _handle_email(self, action: str, user_msg: str):
         api = self.valves.knowledge_api_url
@@ -408,22 +600,37 @@ Formát: jeden fakt na riadok, stručne. Ak nie sú žiadne nové fakty, napíš
         # === EMAIL → čítanie, písanie, čistenie (PRED web search!) ===
         email_action = self._detect_email_action(last_user_msg)
         if email_action:
+            if self._is_juraj_adsun_email(last_user_msg):
+                return self._handle_juraj_email(email_action, last_user_msg)
+            if self._is_adsun_email(last_user_msg):
+                return self._handle_adsun_email(email_action, last_user_msg)
             return self._handle_email(email_action, last_user_msg)
 
-        # === ZNALOSTNÝ AGENT → lokálna RAG databáza ===
+        # === ZNALOSTNÝ AGENT → lokálna RAG databáza (s podporou multi-KB) ===
         kb_info = self._detect_knowledge_agent(last_user_msg)
         if kb_info:
             agent_key = kb_info["agent"]
             agent_name = kb_info["name"]
+            linked_kbs = kb_info.get("linked_kbs", [])
 
             def knowledge_gen():
-                yield f"*[📚 {agent_name}]*\n\n"
-                yield f"_Hľadám v znalostnej databáze..._\n\n"
+                if linked_kbs:
+                    kb_label = f"{agent_name} + {len(linked_kbs)} prepojených"
+                    yield f"*[📚 {kb_label}]*\n\n"
+                    yield f"_Hľadám v {1 + len(linked_kbs)} znalostných databázach..._\n\n"
+                else:
+                    yield f"*[📚 {agent_name}]*\n\n"
+                    yield f"_Hľadám v znalostnej databáze..._\n\n"
                 try:
                     ctx = self._get_knowledge_context(agent_key, last_user_msg)
                     if not ctx or "context" not in ctx:
                         yield "Nepodarilo sa získať kontext zo znalostnej databázy."
                         return
+                    used_kbs = ctx.get("used_kbs", [agent_name])
+                    chunks_used = ctx.get("context_chunks", "?")
+                    budget = ctx.get("context_budget", "?")
+                    if len(used_kbs) > 1:
+                        yield f"_Použité zdroje: {', '.join(used_kbs)} ({chunks_used}/{budget} chunks)_\n\n"
                     sys_prompt = ctx.get("system_prompt", "")
                     context = ctx["context"]
                     kb_messages = [
