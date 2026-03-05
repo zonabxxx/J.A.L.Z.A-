@@ -1654,6 +1654,24 @@ def main():
 
     app.post_init = post_init
 
+    # Minimal HTTP health server for Railway
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class _HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"J.A.L.Z.A. is alive")
+        def log_message(self, *args):
+            pass
+
+    _port = int(os.environ.get("PORT", 8080))
+    _srv = HTTPServer(("0.0.0.0", _port), _HealthHandler)
+    threading.Thread(target=_srv.serve_forever, daemon=True).start()
+    logger.info(f"Health endpoint on port {_port}")
+
     print("J.A.L.Z.A. Telegram bot beží...")
     app.run_polling()
 
