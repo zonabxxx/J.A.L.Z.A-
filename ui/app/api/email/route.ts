@@ -5,12 +5,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const todayOnly = searchParams.get("today") === "true";
   const limit = parseInt(searchParams.get("limit") || "20");
+  const mailbox = searchParams.get("mailbox") || "personal";
 
   try {
-    const res = await backendPost("/email/check", {
-      today_only: todayOnly,
-      limit,
-    });
+    let endpoint = "/email/check";
+    const payload: Record<string, unknown> = { today_only: todayOnly, limit };
+
+    if (mailbox === "adsun") {
+      endpoint = "/email/adsun/list";
+      payload.unseen_only = !todayOnly;
+    } else if (mailbox === "juraj") {
+      endpoint = "/email/juraj/list";
+      payload.unseen_only = !todayOnly;
+    }
+
+    const res = await backendPost(endpoint, payload);
     return Response.json(await res.json());
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
@@ -20,46 +29,67 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { action } = body;
+  const { action, mailbox = "personal" } = body;
 
-  if (action === "send") {
-    try {
-      const res = await backendPost("/email/send", {
+  try {
+    if (action === "send") {
+      let endpoint = "/email/send";
+      if (mailbox === "adsun") endpoint = "/email/adsun/send";
+      else if (mailbox === "juraj") endpoint = "/email/juraj/send";
+
+      const res = await backendPost(endpoint, {
         to: body.to,
         subject: body.subject,
         body: body.body,
       });
       return Response.json(await res.json());
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      return Response.json({ error: msg }, { status: 500 });
     }
-  }
 
-  if (action === "cleanup") {
-    try {
+    if (action === "reply") {
+      let endpoint = "/email/adsun/reply";
+      if (mailbox === "juraj") endpoint = "/email/juraj/reply";
+
+      const res = await backendPost(endpoint, {
+        id: body.id,
+        body: body.body,
+      });
+      return Response.json(await res.json());
+    }
+
+    if (action === "read") {
+      let endpoint = "/email/adsun/read";
+      if (mailbox === "juraj") endpoint = "/email/juraj/read";
+
+      const res = await backendPost(endpoint, { id: body.id });
+      return Response.json(await res.json());
+    }
+
+    if (action === "search") {
+      let endpoint = "/email/adsun/search";
+      if (mailbox === "juraj") endpoint = "/email/juraj/search";
+
+      const res = await backendPost(endpoint, {
+        query: body.query,
+        limit: body.limit || 10,
+      });
+      return Response.json(await res.json());
+    }
+
+    if (action === "cleanup") {
       const res = await backendPost("/email/cleanup", {
         dry_run: body.dry_run ?? true,
       });
       return Response.json(await res.json());
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      return Response.json({ error: msg }, { status: 500 });
     }
-  }
 
-  if (action === "delete") {
-    try {
-      const res = await backendPost("/email/delete", {
-        sender: body.sender,
-        subject: body.subject,
-      });
+    if (action === "cleanup_execute") {
+      const res = await backendPost("/email/cleanup", { dry_run: false });
       return Response.json(await res.json());
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      return Response.json({ error: msg }, { status: 500 });
     }
-  }
 
-  return Response.json({ error: "Unknown action" }, { status: 400 });
+    return Response.json({ error: "Unknown action" }, { status: 400 });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return Response.json({ error: msg }, { status: 500 });
+  }
 }

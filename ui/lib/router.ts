@@ -2,6 +2,9 @@ import { getFeatures } from "./features";
 
 const MAIL_WORDS = [
   "mail", "email", "e-mail", "maily", "emaily", "mailbox", "dorucen",
+  "posli", "posli mail", "odosli", "schrank", "inbox",
+  "spam", "cleanup", "vymaz", "precitaj", "odpoved",
+  "adsun.sk", "juraj@", "info@",
 ];
 
 export type RouteType = "text" | "search" | "email" | "knowledge";
