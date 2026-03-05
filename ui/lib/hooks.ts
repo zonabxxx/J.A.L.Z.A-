@@ -8,6 +8,7 @@ import {
   getConversation,
   type StoredMessage,
 } from "./chat-storage";
+import { parseEmailCommand, getContacts } from "./email-parser";
 
 export interface ChatMessage extends Message {
   route?: RouteResult;
@@ -19,6 +20,13 @@ export function useChat(activeAgent: Agent | null) {
   const [currentRoute, setCurrentRoute] = useState<RouteResult | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const pendingEmailRef = useRef<{
+    to: string;
+    subject: string;
+    body: string;
+    mailbox: string;
+  } | null>(null);
 
   const debouncedSave = useCallback(
     (msgs: ChatMessage[], convId: string | null) => {
@@ -159,99 +167,75 @@ export function useChat(activeAgent: Agent | null) {
     const isCleanupExec = /vymaz\s*(ich|to|ich\s*vsetk|všetk)|zmaz\s*(ich|to)|delete\s*them|potvrdzujem/i.test(lower);
     const isCleanup = /vymaz|vymaž|zmaz|zmaž|cleanup|spam|marketing|upratat|upratať|vycisti|vyčisti/i.test(lower) && !isSend && !isCleanupExec;
     const isRead = /precitaj|prečítaj|otvor|read|zobraz.*detail|celý\s*mail|cely\s*mail/i.test(lower);
-
     // ── SEND EMAIL ──
     if (isSend && !isReply) {
-      const classifyPrompt = `Si emailový asistent. Používateľ ti HOVORÍ hlasom — text je zo speech-to-text a môže byť skomolený/chybný. Musíš pochopiť ZÁMER.
+      const parsed = parseEmailCommand(userText);
 
-ZNÁME KONTAKTY A ADRESY:
-- Juraj Martinkovych (vlastník) = juraj@adsun.sk
-- ADSUN s.r.o. (firma) = info@adsun.sk
-- "sám sebe" / "mne" / "na moj mail" = juraj@adsun.sk
-- Juraj Chlepko (riaditeľ) = riaditeľ ADSUN
-- Jozef Tomášek (inovácie), Simona Jurčíková (účtovníctvo), Myška (grafička), Matej Šejc (obchodník)
+      if (!parsed.to) {
+        const contacts = getContacts();
+        const contactList = contacts.map((c) => `- **${c.name}** → ${c.email} (povedz: "${c.aliases[0]}")`).join("\n");
+        emailReply(
+          `Nerozpoznal som komu chceš poslať mail.\n\n**Známe kontakty:**\n${contactList}\n\nSkús: "Pošli mail **Jurajovi**, predmet Test, text Ahoj"`,
+          route, updatedMessages, convId
+        );
+        return;
+      }
 
-TYPICKÉ STT CHYBY (rozpoznaj ich):
-- "adresu sk" / "adresa sk" / "adresu.sk" → adsun.sk
-- "at sign" / "zavináč" / "@" / "na" (v kontexte emailu) → @
-- "juraj adresu sk" → juraj@adsun.sk
-- "info adresu sk" → info@adsun.sk
-- "sam sebe" / "sám sebe" / "na moj mail" → juraj@adsun.sk
-- "slnko" ak nedáva zmysel → pravdepodobne STT chyba, ignoruj
+      // Use Gemini to understand garbled STT and compose proper email
+      try {
+        const geminiRes = await fetch("/api/gemini", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemPrompt: `Si emailový asistent. Dostaneš skomolený text z hlasového vstupu (speech-to-text). Tvoja úloha je POCHOPIŤ čo chce používateľ povedať a vytvoriť z toho email.
 
-ÚLOHA: Extrahuj z textu:
-1. to (emailová adresa) — použi známe kontakty ak rozpoznáš meno
-2. subject (predmet emailu)
-3. body (text emailu)
+PRAVIDLÁ:
+1. Oprav preklepy a skomolené slová
+2. Extrahuj PREDMET (subject) a TEXT EMAILU (body)
+3. Body napíš ako normálny email — s pozdravom, podpisom "Juraj"
+4. Odpovedz IBA v JSON formáte, nič iné:
+{"subject":"čistý predmet","body":"čistý text emailu s pozdravom"}
 
-VŽDY odpovedz IBA JSON, nič iné:
-{"action":"send","to":"email@example.com","subject":"Predmet","body":"Text emailu"}
+PRÍKLADY:
+- "predmet test text ahoj toto je skuska" → {"subject":"Test","body":"Ahoj,\\n\\ntoto je skúška.\\n\\nS pozdravom,\\nJuraj"}
+- "s tym ze tex bude tak test aha obsah mailu bude testujem" → {"subject":"Test","body":"Ahoj,\\n\\ntestujem email.\\n\\nS pozdravom,\\nJuraj"}`,
+            prompt: userText,
+          }),
+        });
 
-Ak naozaj nevieš komu, napíš: {"action":"ask","question":"Na akú adresu mám email poslať?"}`;
+        let subject = parsed.subject || "Bez predmetu";
+        let body = parsed.body || userText;
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: classifyPrompt },
-            { role: "user", content: userText },
-          ],
-        }),
-      });
-
-      if (res.ok) {
-        const reader = res.body?.getReader();
-        if (!reader) return;
-        const decoder = new TextDecoder();
-        let fullText = "";
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const p = line.slice(6);
-              if (p === "[DONE]") continue;
-              try { const d = JSON.parse(p); if (d.content) fullText += d.content; } catch {}
-            }
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const geminiText = geminiData.text || "";
+          const jsonMatch = geminiText.match(/\{[\s\S]*?"subject"[\s\S]*?"body"[\s\S]*?\}/);
+          if (jsonMatch) {
+            try {
+              const cleaned = JSON.parse(jsonMatch[0]);
+              if (cleaned.subject) subject = cleaned.subject;
+              if (cleaned.body) body = cleaned.body;
+            } catch { /* keep parsed values */ }
           }
         }
 
-        const jsonMatch = fullText.match(/\{[\s\S]*?"action"\s*:\s*"(send|ask)"[\s\S]*?\}/);
-        if (jsonMatch) {
-          try {
-            const cmd = JSON.parse(jsonMatch[0]);
-            if (cmd.action === "ask") {
-              emailReply(cmd.question || "Na akú adresu mám email poslať?", route, updatedMessages, convId);
-              return;
-            }
-            const sendRes = await fetch("/api/email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "send",
-                mailbox: cmd.mailbox || mailbox,
-                to: cmd.to,
-                subject: cmd.subject,
-                body: cmd.body,
-              }),
-            });
-            const sendData = await sendRes.json();
-            if (sendData.status === "sent") {
-              emailReply(`**Email odoslaný!**\n- **Komu:** ${cmd.to}\n- **Predmet:** ${cmd.subject}\n- **Text:** ${cmd.body}`, route, updatedMessages, convId);
-            } else {
-              emailReply(`Chyba pri odoslaní: ${sendData.error || "neznáma chyba"}`, route, updatedMessages, convId);
-            }
-          } catch {
-            emailReply("Nepodarilo sa spracovať emailový príkaz. Skús to znova jasnejšie.", route, updatedMessages, convId);
-          }
-        } else {
-          emailReply(fullText || "Nepodarilo sa rozpoznať emailový príkaz. Povedz napr.: 'Pošli mail na juraj@adsun.sk, predmet Test, text Ahoj toto je test.'", route, updatedMessages, convId);
-        }
+        pendingEmailRef.current = {
+          to: parsed.to,
+          subject,
+          body,
+          mailbox: parsed.mailbox,
+        };
+
+        emailReply(
+          `**Návrh emailu:**\n\n` +
+          `**Komu:** ${parsed.to}\n` +
+          `**Predmet:** ${subject}\n\n` +
+          `---\n\n${body}\n\n---\n\n` +
+          `Povedz **"pošli"** na odoslanie, alebo napíš zmeny.`,
+          route, updatedMessages, convId
+        );
+      } catch {
+        emailReply("Nepodarilo sa spracovať email cez Gemini. Skús to znova.", route, updatedMessages, convId);
       }
       return;
     }
@@ -418,6 +402,47 @@ Na konci pripomeň: "Môžeš povedať: 'prečítaj mail 3', 'odpovedz na mail 1
       const updated = [...messages, userMsg];
       setMessages(updated);
       setIsStreaming(true);
+
+      // Check for pending email confirmation BEFORE routing
+      const lowerTrimmed = content.toLowerCase().trim();
+      if (pendingEmailRef.current && /^(ano|ok|posli|pošli|potvrd|potvrdzujem|odosli|odošli|send|yes|potvrď)$/i.test(lowerTrimmed)) {
+        const emailRoute: RouteResult = { type: "email", model: "jalza", label: "Email", icon: "📧" };
+        setCurrentRoute(emailRoute);
+        const pending = pendingEmailRef.current;
+        pendingEmailRef.current = null;
+        try {
+          const sendRes = await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "send",
+              mailbox: pending.mailbox,
+              to: pending.to,
+              subject: pending.subject,
+              body: pending.body,
+            }),
+          });
+          const sendData = await sendRes.json();
+          if (sendData.status === "sent") {
+            emailReply(
+              `**Email odoslaný!**\n- **Komu:** ${pending.to}\n- **Predmet:** ${pending.subject}`,
+              emailRoute, updated, conversationId
+            );
+          } else {
+            emailReply(`Chyba pri odoslaní: ${sendData.error || "neznáma chyba"}`, emailRoute, updated, conversationId);
+          }
+        } catch {
+          emailReply("Nepodarilo sa odoslať email.", emailRoute, updated, conversationId);
+        } finally {
+          setIsStreaming(false);
+        }
+        return;
+      }
+
+      // Cancel pending email if user starts a different topic
+      if (pendingEmailRef.current && !/mail|email|posli|pošli/i.test(lowerTrimmed)) {
+        pendingEmailRef.current = null;
+      }
 
       const route = await detectRoute(
         content,
