@@ -1,18 +1,5 @@
 import { getFeatures } from "./features";
 
-const MAIL_WORDS = [
-  "mail", "email", "e-mail", "maily", "emaily", "mailbox", "dorucen",
-  "posli", "posli mail", "odosli", "schrank", "inbox",
-  "spam", "cleanup", "vymaz", "precitaj", "odpoved",
-  "adsun.sk", "juraj@", "info@",
-  "adresu.sk", "adresu sk", "poslat mail", "poslať mail",
-  "potvrd", "potvrdzujem",
-  "poslat", "poslať", "odoslat", "odoslať",
-  "chcem poslat", "chcem poslať",
-  "napisat mail", "napísať mail",
-  "testovaci mail", "testovací mail",
-];
-
 export type RouteType = "text" | "search" | "email" | "knowledge";
 
 export interface RouteResult {
@@ -40,12 +27,7 @@ export async function detectRoute(
   const features = getFeatures();
   if (!features.autoRouting) return FALLBACK;
 
-  const lower = text.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-
-  if (features.emailAccess && MAIL_WORDS.some((w) => lower.includes(w))) {
-    return { type: "email", model: "jalza", label: "Email", icon: "📧" };
-  }
-
+  // If knowledge agent is active, route to it
   if (hasAgent && agentKey && agentName) {
     return {
       type: "knowledge",
@@ -57,30 +39,29 @@ export async function detectRoute(
     };
   }
 
-  if (features.webSearch) {
-    try {
-      const res = await fetch("/api/classify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.route === "search") {
-          return {
-            type: "search",
-            model: "gemini-2.0-flash",
-            label: "Web Search",
-            icon: "🔍",
-          };
-        }
-        if (data.route === "email" && features.emailAccess) {
-          return { type: "email", model: "jalza", label: "Email", icon: "📧" };
-        }
+  // LLM-based classification (Gemini → Ollama fallback)
+  try {
+    const res = await fetch("/api/classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.route === "search" && features.webSearch) {
+        return {
+          type: "search",
+          model: "gemini-2.0-flash",
+          label: "Web Search",
+          icon: "🔍",
+        };
       }
-    } catch {
-      // fallback to chat on classify error
+      if (data.route === "email" && features.emailAccess) {
+        return { type: "email", model: "jalza", label: "Email", icon: "📧" };
+      }
     }
+  } catch {
+    // fallback to chat
   }
 
   return FALLBACK;

@@ -1,25 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GEMINI_API_KEY } from "@/lib/config";
+import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
 
-const CLASSIFY_PROMPT = `Si router pre AI asistenta. Tvojou jedinou úlohou je klasifikovať používateľovu správu do jednej z kategórií.
+const CLASSIFY_PROMPT = `Si inteligentný router pre AI asistenta J.A.L.Z.A. Analyzuj používateľovu správu a urči kam ju nasmerovať.
 
-Kategórie:
-- "search" — ak používateľ potrebuje AKTUÁLNE, REÁLNE informácie z internetu (počasie, ceny, novinky, športové výsledky, kurzy, aktuálne udalosti, vyhľadávanie produktov, stránok, receptov, osôb, firiem, čokoľvek čo vyžaduje aktuálne dáta alebo informácie z webu)
-- "email" — ak používateľ chce čítať, písať, odpovedať na emaily alebo spravovať poštu
-- "chat" — všetko ostatné (bežný rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, osobné otázky)
+KATEGÓRIE:
+- "search" — používateľ potrebuje AKTUÁLNE informácie z internetu (počasie, novinky, ceny, kurzy, firmy, produkty, recepty, osoby, udalosti, šport, vyhľadávanie čohokoľvek na webe)
+- "email" — používateľ chce pracovať s emailami (poslať, čítať, odpovedať, hľadať, vymazať, spam, pošta, mail)
+- "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom)
 
-DÔLEŽITÉ:
-- Ak si nie si istý či používateľ potrebuje aktuálne dáta, zvoľ "search"
-- Ignoruj preklepy — pochop ZÁMER správy
-- Odpovedz LEN jedným slovom: search, email, alebo chat`;
+PRAVIDLÁ:
+- Správy sú často zo speech-to-text, skomolené, s preklepmi — pochop ZÁMER, nie presné slová
+- Ak si nie si istý či treba aktuálne dáta → "search"
+- "vyhľadaj", "nájdi", "aké je počasie", "koľko stojí", "čo je nové" → "search"
+- "pošli mail", "maily", "email", "napíš mail", "odpoveď na mail" → "email"
+- Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
-export async function POST(req: NextRequest) {
+Odpovedz IBA jedným slovom: search, email, alebo chat`;
+
+async function classifyWithGemini(message: string): Promise<string | null> {
+  if (!GEMINI_API_KEY) return null;
   try {
-    const { message } = await req.json();
-    if (!message) {
-      return NextResponse.json({ route: "chat" });
-    }
-
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -29,24 +30,62 @@ export async function POST(req: NextRequest) {
           contents: [
             { role: "user", parts: [{ text: `${CLASSIFY_PROMPT}\n\nSpráva: "${message}"` }] },
           ],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 10,
-          },
+          generationConfig: { temperature: 0, maxOutputTokens: 10 },
         }),
+        signal: AbortSignal.timeout(5000),
       }
     );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
 
-    if (!res.ok) {
-      return NextResponse.json({ route: "chat" });
+async function classifyWithOllama(message: string): Promise<string | null> {
+  try {
+    const res = await fetch(getOllamaUrl("/api/chat"), {
+      method: "POST",
+      headers: ollamaHeaders(),
+      body: JSON.stringify({
+        model: "jalza",
+        messages: [
+          { role: "system", content: CLASSIFY_PROMPT },
+          { role: "user", content: message },
+        ],
+        stream: false,
+        options: { temperature: 0, num_predict: 10 },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.message?.content || "").trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function parseRoute(text: string | null): string {
+  if (!text) return "chat";
+  if (text.includes("search")) return "search";
+  if (text.includes("email")) return "email";
+  return "chat";
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { message } = await req.json();
+    if (!message) return NextResponse.json({ route: "chat" });
+
+    // Try Gemini first (fast ~200ms), fall back to Ollama
+    let result = await classifyWithGemini(message);
+    if (!result) {
+      result = await classifyWithOllama(message);
     }
 
-    const data = await res.json();
-    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim().toLowerCase();
-
-    if (text.includes("search")) return NextResponse.json({ route: "search" });
-    if (text.includes("email")) return NextResponse.json({ route: "email" });
-    return NextResponse.json({ route: "chat" });
+    return NextResponse.json({ route: parseRoute(result) });
   } catch {
     return NextResponse.json({ route: "chat" });
   }
