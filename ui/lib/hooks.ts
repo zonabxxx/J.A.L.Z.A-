@@ -47,8 +47,19 @@ PRÍKLADY:
 - "vymaž spam" → {"intent":"cleanup"}
 - "napíš mail na adresu juraj @ adresu sk predmet test telo ahoj" → {"intent":"send","subject":"Test","body":"Ahoj,\\n\\nahoj.\\n\\nS pozdravom,\\nJuraj"}`;
 
+export interface EmailData {
+  from: string;
+  subject: string;
+  date: string;
+  snippet?: string;
+  id?: string;
+  unread?: boolean;
+}
+
 export interface ChatMessage extends Message {
   route?: RouteResult;
+  emails?: EmailData[];
+  mailbox?: string;
 }
 
 export function useChat(activeAgent: Agent | null) {
@@ -177,9 +188,13 @@ export function useChat(activeAgent: Agent | null) {
     text: string,
     route: RouteResult,
     msgs: ChatMessage[],
-    convId: string | null
+    convId: string | null,
+    extras?: { emails?: EmailData[]; mailbox?: string }
   ) => {
-    const finalMsgs: ChatMessage[] = [...msgs, { role: "assistant", content: text, route }];
+    const msg: ChatMessage = { role: "assistant", content: text, route };
+    if (extras?.emails) msg.emails = extras.emails;
+    if (extras?.mailbox) msg.mailbox = extras.mailbox;
+    const finalMsgs: ChatMessage[] = [...msgs, msg];
     setMessages(finalMsgs);
     debouncedSave(finalMsgs, convId);
     trackUsage({ model: route.model, route: "email", outputText: text });
@@ -212,15 +227,16 @@ export function useChat(activeAgent: Agent | null) {
     route: RouteResult, msgs: ChatMessage[], convId: string | null
   ) => {
     pendingEmailRef.current = { to, subject, body, mailbox };
+    const mailboxLabel = mailbox === "adsun" ? "info@adsun.sk" : mailbox === "juraj" ? "juraj@adsun.sk" : "osobná schránka";
     emailReply(
-      `**Skontroluj návrh emailu:**\n\n` +
-      `📬 **Komu:** ${to}\n` +
-      `📝 **Predmet:** ${subject}\n\n` +
-      `---\n\n${body}\n\n---\n\n` +
-      `**Sú údaje správne?**\n` +
-      `- **"pošli"** — odoslať\n` +
-      `- **"zmeň adresu/predmet/text na..."** — upraviť\n` +
-      `- **"zruš"** — zrušiť`,
+      `✉️ Návrh emailu (${mailboxLabel})\n\n` +
+      `📬 Komu: ${to}\n` +
+      `📝 Predmet: ${subject}\n\n` +
+      `${body}\n\n` +
+      `─── Akcie ───\n` +
+      `"pošli" — odoslať\n` +
+      `"zmeň adresu/predmet/text na..." — upraviť\n` +
+      `"zruš" — zrušiť`,
       route, msgs, convId
     );
   };
@@ -326,12 +342,15 @@ export function useChat(activeAgent: Agent | null) {
           emailReply(`Nenašiel som žiadne emaily pre: "${query}"`, route, updatedMessages, convId);
           return;
         }
-        const emailContext = formatEmailList(emails);
-        await streamResponse(
-          "/api/chat",
-          { messages: [{ role: "system", content: `Výsledky hľadania "${query}":\n\n${emailContext}\n\nZhrň po slovensky.` }, { role: "user", content: userText }] },
-          route, updatedMessages, convId
-        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const emailCards: EmailData[] = emails.map((e: any) => ({
+          from: e.from || e.sender?.emailAddress?.address || "?",
+          subject: e.subject || "(bez predmetu)",
+          date: e.date || e.receivedDateTime || "",
+          snippet: e.snippet || e.bodyPreview || "",
+          id: e.id || e.messageId || undefined,
+        }));
+        emailReply(`Výsledky hľadania "${query}":`, route, updatedMessages, convId, { emails: emailCards, mailbox });
       } catch { emailReply("Nepodarilo sa vyhľadať emaily.", route, updatedMessages, convId); }
       return;
     }
@@ -359,7 +378,14 @@ export function useChat(activeAgent: Agent | null) {
           const readRes = await fetch("/api/email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "read", mailbox, id: target.id }) });
           const detail = await readRes.json();
           const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
-          emailReply(`**Od:** ${target.from || target.sender?.emailAddress?.address}\n**Predmet:** ${target.subject}\n**Dátum:** ${target.date || target.receivedDateTime}\n\n---\n\n${bodyText}`, route, updatedMessages, convId);
+          const sender = target.from || target.sender?.emailAddress?.address || "?";
+          const emailCard: EmailData[] = [{
+            from: sender,
+            subject: target.subject || "(bez predmetu)",
+            date: target.date || target.receivedDateTime || "",
+            snippet: bodyText.slice(0, 200),
+          }];
+          emailReply(bodyText, route, updatedMessages, convId, { emails: emailCard, mailbox });
         } else {
           emailReply(`Email č. ${num} neexistuje. Najprv si nechaj zobraziť maily.`, route, updatedMessages, convId);
         }
@@ -376,13 +402,16 @@ export function useChat(activeAgent: Agent | null) {
       const emails = data.emails || [];
       if (emails.length === 0) { emailReply(today ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.", route, updatedMessages, convId); return; }
 
-      const emailContext = formatEmailList(emails);
-      const mailboxLabel = mailbox === "adsun" ? "info@adsun.sk" : mailbox === "juraj" ? "juraj@adsun.sk" : "osobná schránka";
-      await streamResponse(
-        "/api/chat",
-        { messages: [{ role: "system", content: `Emailový asistent. Schránka: ${mailboxLabel}.\nEmaily:\n\n${emailContext}\n\nZhrň prehľadne po slovensky. Na konci pripomeň dostupné príkazy.` }, { role: "user", content: userText }] },
-        route, updatedMessages, convId
-      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const emailCards: EmailData[] = emails.map((e: any) => ({
+        from: e.from || e.sender?.emailAddress?.address || "?",
+        subject: e.subject || "(bez predmetu)",
+        date: e.date || e.receivedDateTime || "",
+        snippet: e.snippet || e.bodyPreview || "",
+        id: e.id || e.messageId || undefined,
+        unread: e.isRead === false,
+      }));
+      emailReply("", route, updatedMessages, convId, { emails: emailCards, mailbox });
     } catch {
       emailReply("Nepodarilo sa načítať emaily. Skontroluj pripojenie.", route, updatedMessages, convId);
     }
