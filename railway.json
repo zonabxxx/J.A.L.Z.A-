@@ -1,12 +1,10 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "dockerfilePath": "ui/Dockerfile",
-    "watchPatterns": ["ui/**"]
+    "buildCommand": "cd ui && npm ci && npm run build"
   },
   "deploy": {
-    "startCommand": "node server.js",
-    "healthcheckPath": "/",
+    "startCommand": "cd ui && npm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
