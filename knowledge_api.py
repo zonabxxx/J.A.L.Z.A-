@@ -144,11 +144,48 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length))
 
+    def _read_raw_body(self) -> bytes:
+        length = int(self.headers.get("Content-Length", 0))
+        if length == 0:
+            return b""
+        return self.rfile.read(length)
+
     def _check_token(self) -> bool:
         if not API_TOKEN:
             return True
         token = self.headers.get("X-API-Token", "")
         return hmac.compare_digest(token, API_TOKEN)
+
+    def _proxy_ollama(self, method="POST"):
+        """Secure proxy to local Ollama — requires API token, streams response."""
+        if not self._check_token():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
+        ollama_path = self.path[len("/ollama"):]
+        ollama_url = f"http://localhost:11434{ollama_path}"
+        try:
+            import requests as req
+            raw_body = self._read_raw_body() if method == "POST" else None
+            if method == "POST":
+                resp = req.post(
+                    ollama_url,
+                    data=raw_body,
+                    headers={"Content-Type": "application/json"},
+                    stream=True,
+                    timeout=600,
+                )
+            else:
+                resp = req.get(ollama_url, stream=True, timeout=30)
+            self.send_response(resp.status_code)
+            ct = resp.headers.get("Content-Type", "application/json")
+            self.send_header("Content-Type", ct)
+            self.end_headers()
+            for chunk in resp.iter_content(chunk_size=4096):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except Exception as e:
+            self._send_json({"error": f"Ollama nedostupná: {e}"}, 502)
 
     def do_GET(self):
         if self.path == "/health":
@@ -160,6 +197,10 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             conn.close()
             self._send_json({"has_users": count > 0})
+            return
+
+        if self.path.startswith("/ollama/"):
+            self._proxy_ollama(method="GET")
             return
 
         if not self._check_token():
@@ -180,13 +221,15 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 }
             self._send_json(agents)
 
-        elif self.path == "/health":
-            self._send_json({"status": "ok"})
-
         else:
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
+        # Ollama proxy — requires token, streams response
+        if self.path.startswith("/ollama/"):
+            self._proxy_ollama(method="POST")
+            return
+
         # Auth endpoints — no token required
         if self.path == "/auth/register":
             body = self._read_body()

@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
-import { OLLAMA_URL, VISION_MODEL } from "@/lib/config";
+import { VISION_MODEL } from "@/lib/config";
+import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
 
 export async function POST(req: NextRequest) {
   const { prompt, images } = await req.json();
 
-  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const res = await fetch(getOllamaUrl("/api/chat"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: ollamaHeaders(),
     body: JSON.stringify({
       model: VISION_MODEL,
       messages: [

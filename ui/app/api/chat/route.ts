@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import { OLLAMA_URL, DEFAULT_MODEL } from "@/lib/config";
+import { DEFAULT_MODEL } from "@/lib/config";
 import { backendPost } from "@/lib/api-client";
+import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
 
 export async function POST(req: NextRequest) {
   const { messages, model, agent } = await req.json();
@@ -32,9 +33,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+  const res = await fetch(getOllamaUrl("/api/chat"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: ollamaHeaders(),
     body: JSON.stringify({
       model: useModel,
       messages: finalMessages,
