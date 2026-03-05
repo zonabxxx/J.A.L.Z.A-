@@ -8,7 +8,7 @@ import TasksPanel from "@/components/tasks-panel";
 import SettingsModal from "@/components/settings-modal";
 import LoginScreen from "@/components/login-screen";
 import { useChat } from "@/lib/hooks";
-import { getCurrentUser, type User } from "@/lib/auth";
+import { checkSession, logoutUser, type User } from "@/lib/auth";
 import { getConversation } from "@/lib/chat-storage";
 import { initLocationOnStartup } from "@/lib/location";
 import { registerServiceWorker } from "@/lib/register-sw";
@@ -35,8 +35,29 @@ export default function Home() {
   const [agents, setAgents] = useState<Record<string, Agent>>({});
 
   useEffect(() => {
-    setUser(getCurrentUser());
-    setLoaded(true);
+    checkSession().then((u) => {
+      setUser(u);
+      setLoaded(true);
+      if (u) {
+        initLocationOnStartup();
+        registerServiceWorker();
+        fetch("/api/agents")
+          .then((r) => r.json())
+          .then((data) => {
+            const mapped: Record<string, Agent> = {};
+            for (const [key, val] of Object.entries(data)) {
+              const v = val as Agent;
+              mapped[key] = { ...v, key };
+            }
+            setAgents(mapped);
+          })
+          .catch(() => {});
+      }
+    });
+  }, []);
+
+  const handleLogin = useCallback((u: User) => {
+    setUser(u);
     initLocationOnStartup();
     registerServiceWorker();
     fetch("/api/agents")
@@ -50,6 +71,13 @@ export default function Home() {
         setAgents(mapped);
       })
       .catch(() => {});
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    await logoutUser();
+    setUser(null);
+    setActiveAgent(null);
+    setActiveTab("chat");
   }, []);
 
   const handleSelectAgent = useCallback(
@@ -95,12 +123,11 @@ export default function Home() {
   if (!loaded) return null;
 
   if (!user) {
-    return <LoginScreen onLogin={(u) => setUser(u)} />;
+    return <LoginScreen onLogin={handleLogin} />;
   }
 
   return (
     <div className="flex h-[100dvh] relative">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
@@ -108,7 +135,6 @@ export default function Home() {
         />
       )}
 
-      {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-200 ease-out md:relative md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -130,7 +156,6 @@ export default function Home() {
         />
       </div>
 
-      {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0">
         {activeTab === "chat" && (
           <Chat
@@ -153,7 +178,7 @@ export default function Home() {
         user={user}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onLogout={() => setUser(null)}
+        onLogout={handleLogout}
       />
     </div>
   );

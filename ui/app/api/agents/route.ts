@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { KNOWLEDGE_API_URL } from "@/lib/config";
+import { backendGet, backendPost } from "@/lib/api-client";
 
 export async function GET() {
   try {
-    const res = await fetch(`${KNOWLEDGE_API_URL}/agents`);
+    const res = await backendGet("/agents");
     const data = await res.json();
     return Response.json(data);
   } catch {
@@ -17,11 +17,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "create") {
     try {
-      const res = await fetch(`${KNOWLEDGE_API_URL}/addagent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const res = await backendPost("/addagent", body);
       return Response.json(await res.json());
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
@@ -31,11 +27,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "learn") {
     try {
-      const res = await fetch(`${KNOWLEDGE_API_URL}/learn`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: body.agent }),
-      });
+      const res = await backendPost("/learn", { agent: body.agent });
       return Response.json(await res.json());
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
@@ -45,11 +37,7 @@ export async function POST(req: NextRequest) {
 
   if (action === "refresh") {
     try {
-      const res = await fetch(`${KNOWLEDGE_API_URL}/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent: body.agent }),
-      });
+      const res = await backendPost("/refresh", { agent: body.agent });
       return Response.json(await res.json());
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";

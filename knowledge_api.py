@@ -6,16 +6,84 @@ Beží na porte 8765, pipe funkcia v Open WebUI ho volá cez host.docker.interna
 import os
 import re
 import json
+import hmac
 import sqlite3
+import secrets
+import hashlib
+import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from knowledge_base import KnowledgeBase, list_knowledge_bases
 from specialist_agent import ask_specialist, AGENTS
 
 PORT = 8765
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-CONVERSATIONS_DB = os.path.join(os.path.dirname(__file__), "conversations.db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+CONVERSATIONS_DB = os.path.join(BASE_DIR, "conversations.db")
 
+# Load .env file
+_env_path = os.path.join(BASE_DIR, ".env")
+if os.path.isfile(_env_path):
+    with open(_env_path) as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
+API_TOKEN = os.environ.get("JALZA_API_TOKEN", "")
+DB_ENCRYPTION_KEY = os.environ.get("JALZA_DB_ENCRYPTION_KEY", "")
+
+# ── Encryption helpers (Fernet AES-256-CBC) ───────────────────────────
+_fernet = None
+
+def _get_fernet():
+    global _fernet
+    if _fernet is not None:
+        return _fernet
+    if not DB_ENCRYPTION_KEY:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        raw = hashlib.sha256(DB_ENCRYPTION_KEY.encode()).digest()
+        key = base64.urlsafe_b64encode(raw)
+        _fernet = Fernet(key)
+        return _fernet
+    except ImportError:
+        return None
+
+
+def encrypt_text(text: str) -> str:
+    f = _get_fernet()
+    if not f:
+        return text
+    return f.encrypt(text.encode("utf-8")).decode("ascii")
+
+
+def decrypt_text(data: str) -> str:
+    f = _get_fernet()
+    if not f:
+        return data
+    try:
+        return f.decrypt(data.encode("ascii")).decode("utf-8")
+    except Exception:
+        return data
+
+
+# ── Password hashing (PBKDF2-SHA256, 600k iterations) ────────────────
+
+def hash_password(password: str) -> tuple:
+    salt = secrets.token_hex(32)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 600_000)
+    return key.hex(), salt
+
+
+def verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 600_000)
+    return hmac.compare_digest(key.hex(), stored_hash)
+
+
+# ── DB init ───────────────────────────────────────────────────────────
 
 def _init_conversations_db():
     conn = sqlite3.connect(CONVERSATIONS_DB)
@@ -31,6 +99,14 @@ def _init_conversations_db():
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_updated ON conversations(updated_at DESC)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        created_at TEXT NOT NULL
+    )""")
     conn.commit()
     conn.close()
 
@@ -68,7 +144,28 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length))
 
+    def _check_token(self) -> bool:
+        if not API_TOKEN:
+            return True
+        token = self.headers.get("X-API-Token", "")
+        return hmac.compare_digest(token, API_TOKEN)
+
     def do_GET(self):
+        if self.path == "/health":
+            self._send_json({"status": "ok"})
+            return
+
+        if self.path == "/auth/check":
+            conn = sqlite3.connect(CONVERSATIONS_DB)
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            conn.close()
+            self._send_json({"has_users": count > 0})
+            return
+
+        if not self._check_token():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
+
         if self.path == "/agents":
             agents = {}
             for key, cfg in AGENTS.items():
@@ -90,6 +187,70 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
+        # Auth endpoints — no token required
+        if self.path == "/auth/register":
+            body = self._read_body()
+            name = body.get("name", "").strip()
+            password = body.get("password", "")
+            if not name or len(password) < 6:
+                self._send_json({"error": "Meno a heslo (min. 6 znakov) sú povinné."}, 400)
+                return
+            conn = sqlite3.connect(CONVERSATIONS_DB)
+            existing = conn.execute("SELECT id FROM users WHERE name = ?", (name,)).fetchone()
+            if existing:
+                conn.close()
+                self._send_json({"error": "Používateľ s týmto menom už existuje."}, 409)
+                return
+            user_id = name.lower().replace(" ", "_")
+            user_id = re.sub(r"[^a-z0-9_]", "", user_id)
+            pw_hash, salt = hash_password(password)
+            from datetime import datetime
+            now = datetime.utcnow().isoformat()
+            conn.execute(
+                "INSERT INTO users (id, name, password_hash, salt, role, created_at) VALUES (?,?,?,?,?,?)",
+                (user_id, name, pw_hash, salt, "admin", now),
+            )
+            conn.commit()
+            conn.close()
+            self._send_json({"user": {"id": user_id, "name": name, "role": "admin"}})
+            return
+
+        if self.path == "/auth/login":
+            body = self._read_body()
+            name = body.get("name", "").strip()
+            password = body.get("password", "")
+            conn = sqlite3.connect(CONVERSATIONS_DB)
+            row = conn.execute(
+                "SELECT id, name, password_hash, salt, role FROM users WHERE name = ?",
+                (name,),
+            ).fetchone()
+            conn.close()
+            if not row:
+                self._send_json({"error": "Neplatné prihlasovacie údaje."}, 401)
+                return
+            if not verify_password(password, row[2], row[3]):
+                self._send_json({"error": "Neplatné prihlasovacie údaje."}, 401)
+                return
+            self._send_json({"user": {"id": row[0], "name": row[1], "role": row[4]}})
+            return
+
+        if self.path == "/auth/users":
+            if not self._check_token():
+                self._send_json({"error": "Unauthorized"}, 401)
+                return
+            conn = sqlite3.connect(CONVERSATIONS_DB)
+            rows = conn.execute("SELECT id, name, role, created_at FROM users").fetchall()
+            conn.close()
+            self._send_json({
+                "users": [{"id": r[0], "name": r[1], "role": r[2], "created_at": r[3]} for r in rows]
+            })
+            return
+
+        # All other POST endpoints require API token
+        if not self._check_token():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
+
         if self.path == "/ask":
             body = self._read_body()
             agent_key = body.get("agent", "")
@@ -656,7 +817,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 conn.close()
                 if row:
                     d = dict(row)
-                    d["messages"] = json.loads(d["messages"])
+                    d["messages"] = json.loads(decrypt_text(d["messages"]))
                     self._send_json(d)
                 else:
                     self._send_json({"error": "not found"}, 404)
@@ -672,6 +833,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     from datetime import datetime
                     now = datetime.utcnow().isoformat()
 
+                encrypted_messages = encrypt_text(json.dumps(messages, ensure_ascii=False))
+
                 existing = conn.execute(
                     "SELECT id FROM conversations WHERE id = ?", (conv_id,)
                 ).fetchone()
@@ -679,12 +842,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 if existing:
                     conn.execute(
                         "UPDATE conversations SET title=?, messages=?, updated_at=?, agent_key=?, agent_name=? WHERE id=?",
-                        (title, json.dumps(messages, ensure_ascii=False), now, agent_key, agent_name, conv_id),
+                        (title, encrypted_messages, now, agent_key, agent_name, conv_id),
                     )
                 else:
                     conn.execute(
                         "INSERT INTO conversations (id, user_id, title, agent_key, agent_name, messages, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-                        (conv_id, user_id, title, agent_key, agent_name, json.dumps(messages, ensure_ascii=False), now, now),
+                        (conv_id, user_id, title, agent_key, agent_name, encrypted_messages, now, now),
                     )
                 conn.commit()
                 conn.close()

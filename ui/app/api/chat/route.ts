@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { OLLAMA_URL, DEFAULT_MODEL } from "@/lib/config";
+import { backendPost } from "@/lib/api-client";
 
 export async function POST(req: NextRequest) {
   const { messages, model, agent } = await req.json();
@@ -9,14 +10,10 @@ export async function POST(req: NextRequest) {
 
   if (agent) {
     try {
-      const ctxRes = await fetch(`http://localhost:8765/context`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent: agent.key,
-          question: messages[messages.length - 1]?.content || "",
-          top_k: 5,
-        }),
+      const ctxRes = await backendPost("/context", {
+        agent: agent.key,
+        question: messages[messages.length - 1]?.content || "",
+        top_k: 5,
       });
       if (ctxRes.ok) {
         const ctx = await ctxRes.json();

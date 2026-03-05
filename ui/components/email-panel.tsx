@@ -6,7 +6,12 @@ export default function EmailPanel() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(false);
   const [todayOnly, setTodayOnly] = useState(true);
-  const [cleanupStats, setCleanupStats] = useState<Record<string, number> | null>(null);
+  const [cleanupStats, setCleanupStats] = useState<{
+    marketing_found: number;
+    old_found: number;
+    deleted: number;
+    dry_run: boolean;
+  } | null>(null);
   const [cleaningUp, setCleaningUp] = useState(false);
 
   const loadEmails = useCallback(async () => {
@@ -133,7 +138,7 @@ export default function EmailPanel() {
               </span>
               {(cleanupStats.marketing_found > 0 ||
                 cleanupStats.old_found > 0) &&
-                cleanupStats.dry_run !== false && (
+                cleanupStats.dry_run && (
                   <button
                     onClick={() => handleCleanup(false)}
                     disabled={cleaningUp}

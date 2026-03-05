@@ -65,7 +65,8 @@ export default function VoiceButton({ onTranscript, disabled }: Props) {
       (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
-    const recognition = new (SpeechRecognition as new () => SpeechRecognition & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new (SpeechRecognition as any)() as {
       lang: string;
       continuous: boolean;
       interimResults: boolean;
@@ -73,7 +74,7 @@ export default function VoiceButton({ onTranscript, disabled }: Props) {
       onerror: () => void;
       onend: () => void;
       start: () => void;
-    })();
+    };
     recognition.lang = "sk-SK";
     recognition.continuous = false;
     recognition.interimResults = false;

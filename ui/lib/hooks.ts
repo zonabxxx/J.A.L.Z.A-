@@ -18,7 +18,7 @@ export function useChat(activeAgent: Agent | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<RouteResult | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const debouncedSave = useCallback(
     (msgs: ChatMessage[], convId: string | null) => {

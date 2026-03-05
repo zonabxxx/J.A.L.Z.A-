@@ -1,13 +1,9 @@
 import { NextRequest } from "next/server";
-import { KNOWLEDGE_API_URL } from "@/lib/config";
+import { backendPost } from "@/lib/api-client";
 
 export async function GET() {
   try {
-    const res = await fetch(`${KNOWLEDGE_API_URL}/settings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
+    const res = await backendPost("/settings", {});
     return Response.json(await res.json());
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
@@ -18,11 +14,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   try {
-    const res = await fetch(`${KNOWLEDGE_API_URL}/settings/update`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = await backendPost("/settings/update", body);
     return Response.json(await res.json());
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";

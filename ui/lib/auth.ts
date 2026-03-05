@@ -5,10 +5,8 @@ export interface User {
   name: string;
   avatar: string;
   color: string;
-  createdAt: string;
+  role: string;
 }
-
-const STORAGE_KEY = "jalza_user";
 
 const COLORS = [
   "bg-blue-600",
@@ -21,54 +19,97 @@ const COLORS = [
   "bg-pink-600",
 ];
 
-export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-export function loginUser(name: string): User {
-  const id = name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+function makeAvatar(name: string): { avatar: string; color: string } {
   const initials = name
     .split(" ")
     .map((w) => w[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
+  const id = name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
   const colorIndex = id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length;
-  const user: User = {
-    id,
-    name,
-    avatar: initials,
-    color: COLORS[colorIndex],
-    createdAt: new Date().toISOString(),
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-
-  const users = getKnownUsers();
-  if (!users.find((u) => u.id === user.id)) {
-    users.push(user);
-    localStorage.setItem("jalza_users", JSON.stringify(users));
-  }
-  return user;
+  return { avatar: initials, color: COLORS[colorIndex] };
 }
 
-export function logoutUser(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-export function getKnownUsers(): User[] {
-  if (typeof window === "undefined") return [];
+export async function checkSession(): Promise<User | null> {
   try {
-    const stored = localStorage.getItem("jalza_users");
-    if (stored) return JSON.parse(stored);
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check" }),
+    });
+    const data = await res.json();
+    if (data.authenticated && data.user) {
+      const { avatar, color } = makeAvatar(data.user.name);
+      return { ...data.user, avatar, color };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function hasUsers(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "has_users" }),
+    });
+    const data = await res.json();
+    return data.has_users === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function loginUser(
+  name: string,
+  password: string
+): Promise<{ user?: User; error?: string }> {
+  try {
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "login", name, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Chyba prihlásenia" };
+    const { avatar, color } = makeAvatar(data.user.name);
+    return { user: { ...data.user, avatar, color } };
+  } catch {
+    return { error: "Server nedostupný" };
+  }
+}
+
+export async function registerUser(
+  name: string,
+  password: string,
+  setupKey: string
+): Promise<{ user?: User; error?: string }> {
+  try {
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "register", name, password, setup_key: setupKey }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Chyba registrácie" };
+    const { avatar, color } = makeAvatar(data.user.name);
+    return { user: { ...data.user, avatar, color } };
+  } catch {
+    return { error: "Server nedostupný" };
+  }
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    });
   } catch {
     // ignore
   }
-  return [];
 }

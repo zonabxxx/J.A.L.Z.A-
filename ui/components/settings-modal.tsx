@@ -220,8 +220,8 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    await logoutUser();
     onLogout();
   };
 
@@ -314,8 +314,7 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
                   <div>
                     <div className="font-medium">{user.name}</div>
                     <div className="text-xs text-zinc-500">
-                      Prihlásený od{" "}
-                      {new Date(user.createdAt).toLocaleDateString("sk-SK")}
+                      Role: {user.role || "user"}
                     </div>
                   </div>
                 </div>

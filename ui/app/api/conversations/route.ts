@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { KNOWLEDGE_API_URL } from "@/lib/config";
+import { backendPost } from "@/lib/api-client";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const res = await fetch(`${KNOWLEDGE_API_URL}/conversations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const userId = req.headers.get("x-user-id") || "default";
+    const securedBody = { ...body, user_id: userId };
+    const res = await backendPost("/conversations", securedBody);
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {

@@ -38,26 +38,14 @@ function extractTitle(messages: StoredMessage[]): string {
   return text.length > 60 ? text.slice(0, 60) + "…" : text;
 }
 
-function getUserId(): string {
-  try {
-    const stored = localStorage.getItem("jalza_user");
-    if (stored) {
-      const user = JSON.parse(stored);
-      return user.id || "default";
-    }
-  } catch {
-    // ignore
-  }
-  return "default";
-}
-
 export async function loadConversations(): Promise<Conversation[]> {
   try {
     const res = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "list", user_id: getUserId(), limit: 100 }),
+      body: JSON.stringify({ action: "list", limit: 100 }),
     });
+    if (res.status === 401) return [];
     const data = await res.json();
     const items: ConversationListItem[] = data.conversations || [];
     return items.map((c) => ({
@@ -91,7 +79,6 @@ export async function saveConversation(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "save",
-        user_id: getUserId(),
         id: convId,
         title,
         agent_key: agentKey,
@@ -101,9 +88,7 @@ export async function saveConversation(
       }),
     });
   } catch {
-    // fallback: save to localStorage
-    const key = `jalza_conv_${convId}`;
-    localStorage.setItem(key, JSON.stringify({ id: convId, title, agentKey, agentName, messages, createdAt: now, updatedAt: now }));
+    // silent fail
   }
 
   return convId;
@@ -114,7 +99,7 @@ export async function deleteConversation(id: string): Promise<void> {
     await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", user_id: getUserId(), id }),
+      body: JSON.stringify({ action: "delete", id }),
     });
   } catch {
     // ignore
@@ -126,7 +111,7 @@ export async function getConversation(id: string): Promise<Conversation | null> 
     const res = await fetch("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get", user_id: getUserId(), id }),
+      body: JSON.stringify({ action: "get", id }),
     });
     if (!res.ok) return null;
     const data = await res.json();

@@ -22,9 +22,13 @@ __pycache__/
 # OS
 .DS_Store
 
-# Environment
+# Environment / Secrets
 .env
 .env.local
+.env.production
+ui/.env
+ui/.env.local
+ui/.env.production
 
 # Certificates / keys
 caddy/*.key
