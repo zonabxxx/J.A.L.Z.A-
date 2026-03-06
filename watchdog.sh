@@ -1,6 +1,6 @@
 #!/bin/bash
-# J.A.L.Z.A. Watchdog — monitors and auto-restarts services
-# Run via: launchctl or cron every 2 minutes
+# J.A.L.Z.A. Watchdog — monitors, auto-restarts, and keeps model warm
+# Run via launchd every 2 minutes
 
 export PATH="$HOME/.local/bin:$HOME/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 JALZA_DIR="/Users/jurajmartinkovych/Documents/workspaceAI/jalza"
@@ -11,12 +11,12 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG"; }
 
 restart_count=0
 
-# 1) Ollama
+# 1) Ollama process
 if ! curl -sf --max-time 3 http://localhost:11434/api/tags > /dev/null 2>&1; then
   log "RESTART Ollama — not responding"
   pkill -f "ollama serve" 2>/dev/null
   sleep 2
-  ollama serve > /dev/null 2>&1 &
+  OLLAMA_KEEP_ALIVE=24h ollama serve > /dev/null 2>&1 &
   sleep 5
   restart_count=$((restart_count + 1))
 fi
@@ -30,16 +30,19 @@ if ! lsof -ti:8765 > /dev/null 2>&1; then
   restart_count=$((restart_count + 1))
 fi
 
-# 3) Ollama model health (quick ping)
+# 3) Keep jalza model warm — prevent GPU unload
 if curl -sf --max-time 3 http://localhost:11434/api/tags > /dev/null 2>&1; then
-  response=$(curl -s --max-time 20 http://localhost:11434/api/chat \
-    -d '{"model":"jalza","messages":[{"role":"user","content":"ping"}],"stream":false}' 2>&1)
+  response=$(curl -s --max-time 45 http://localhost:11434/api/chat \
+    -d '{"model":"jalza","messages":[{"role":"user","content":"ok"}],"stream":false,"options":{"num_predict":1}}' 2>&1)
   if [ $? -ne 0 ] || echo "$response" | grep -q '"error"'; then
-    log "RESTART Ollama — model jalza not responding, restarting"
+    log "RESTART Ollama — model jalza frozen, restarting"
     pkill -f "ollama serve" 2>/dev/null
-    sleep 2
-    ollama serve > /dev/null 2>&1 &
-    sleep 5
+    sleep 3
+    OLLAMA_KEEP_ALIVE=24h ollama serve > /dev/null 2>&1 &
+    sleep 8
+    # Pre-load model
+    curl -s --max-time 60 http://localhost:11434/api/chat \
+      -d '{"model":"jalza","messages":[{"role":"user","content":"ok"}],"stream":false,"options":{"num_predict":1}}' > /dev/null 2>&1
     restart_count=$((restart_count + 1))
   fi
 fi
@@ -52,7 +55,7 @@ if ! pgrep -f "localtunnel.*jalza-api" > /dev/null 2>&1; then
   restart_count=$((restart_count + 1))
 fi
 
-# 5) Next.js dev server (port 3000) — only if local
+# 5) Next.js dev server (port 3001)
 if ! lsof -ti:3001 > /dev/null 2>&1; then
   log "RESTART Next.js dev server"
   cd "$UI_DIR"

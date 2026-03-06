@@ -8,8 +8,8 @@ echo "=== J.A.L.Z.A. starting at $(date) ==="
 
 # 1) Ollama
 if ! curl -sf --max-time 2 http://localhost:11434/api/tags > /dev/null 2>&1; then
-  echo "Starting Ollama..."
-  ollama serve > /dev/null 2>&1 &
+  echo "Starting Ollama (keep_alive=24h)..."
+  OLLAMA_KEEP_ALIVE=24h ollama serve > /dev/null 2>&1 &
   sleep 3
 fi
 
