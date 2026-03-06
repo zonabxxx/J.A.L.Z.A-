@@ -618,11 +618,11 @@ Odpovedz IBA JSON, nič iné.`;
 
   const readEmailById = useCallback(
     async (emailId: string, mailbox: string) => {
-      const route: RouteResult = { type: "email", model: "graph", label: "Email", icon: "📧" };
+      const route: RouteResult = { type: "email", model: "gemini-2.0-flash", label: "Email · jalza", icon: "📧" };
       setCurrentRoute(route);
       setIsStreaming(true);
 
-      const loadingMsg: ChatMessage = { role: "assistant", content: "", route };
+      const loadingMsg: ChatMessage = { role: "assistant", content: "Čítam email…", route };
       const updated = [...messages, loadingMsg];
       setMessages(updated);
 
@@ -637,20 +637,48 @@ Odpovedz IBA JSON, nič iné.`;
           const errMsg: ChatMessage = { role: "assistant", content: `Chyba: ${detail.error}`, route };
           setMessages([...messages, errMsg]);
           debouncedSave([...messages, errMsg], conversationId);
-        } else {
-          const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
-          const card: EmailData[] = [toEmailData({ ...detail, body: bodyText })];
-          const msg: ChatMessage = {
-            role: "assistant",
-            content: bodyText,
-            route,
-            emails: card,
-            mailbox,
-          };
-          const finalMsgs = [...messages, msg];
-          setMessages(finalMsgs);
-          debouncedSave(finalMsgs, conversationId);
+          return;
         }
+
+        const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
+        const fromAddr = detail.sender || detail.sender_email || detail.from || "neznámy";
+        const subject = detail.subject || "(bez predmetu)";
+
+        const aiPrompt = [
+          `Prečítal som email. Zhrň ho používateľovi po SLOVENSKY, jasne a zrozumiteľne.`,
+          `Ak email obsahuje dôležité dátumy, sumy, pokyny alebo akcie, zvýrazni ich.`,
+          `Ak niečo nie je jasné alebo chýbajú informácie, upozorni na to a opýtaj sa čo chce urobiť ďalej (odpovedať, preposlať, archivovať...).`,
+          ``,
+          `Od: ${fromAddr}`,
+          `Predmet: ${subject}`,
+          `---`,
+          bodyText,
+        ].join("\n");
+
+        let summary: string;
+        try {
+          const aiRes = await fetch("/api/gemini", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: aiPrompt,
+              systemPrompt: "Si J.A.L.Z.A., inteligentný asistent. Odpovedáš VŽDY po SLOVENSKY. Keď ti používateľ dá email, zhrň jeho obsah prirodzene — čo kto píše, čo chce, aké sú dôležité body. Na konci sa opýtaj či chce odpovedať, preposlať alebo niečo iné.",
+            }),
+          });
+          const aiData = await aiRes.json();
+          summary = aiData.text || bodyText;
+        } catch {
+          summary = bodyText;
+        }
+
+        const msg: ChatMessage = {
+          role: "assistant",
+          content: summary,
+          route,
+        };
+        const finalMsgs = [...messages, msg];
+        setMessages(finalMsgs);
+        debouncedSave(finalMsgs, conversationId);
       } catch {
         const errMsg: ChatMessage = { role: "assistant", content: "Nepodarilo sa prečítať email.", route };
         setMessages([...messages, errMsg]);
