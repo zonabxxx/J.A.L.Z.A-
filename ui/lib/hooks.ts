@@ -149,7 +149,11 @@ export function useChat(activeAgent: Agent | null) {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok || !res.body) throw new Error("Request failed");
+    if (!res.ok || !res.body) {
+      let detail = `${res.status}`;
+      try { const d = await res.json(); detail = d.error || JSON.stringify(d); } catch { /* */ }
+      throw new Error(`Chyba (${res.status}): ${detail}`);
+    }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
