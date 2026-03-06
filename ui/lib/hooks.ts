@@ -102,6 +102,8 @@ export function useChat(activeAgent: Agent | null) {
     missing: string[];
   } | null>(null);
 
+  const lastMailboxRef = useRef<string>("personal");
+
   const debouncedSave = useCallback(
     (msgs: ChatMessage[], convId: string | null) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -230,8 +232,8 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    // Default to first mailbox
-    return mailboxes[0]?.id || "personal";
+    // No match — use last used mailbox (for "prečítaj mail 1" etc.)
+    return lastMailboxRef.current;
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -338,8 +340,11 @@ export function useChat(activeAgent: Agent | null) {
     // Override mailbox from Gemini intent if provided
     if (intent.mailbox) {
       const mb = (intent.mailbox as string).toLowerCase();
-      if (mb === "juraj" || mb === "adsun" || mb === "personal") mailbox = mb;
+      if (mailboxes.some(m => m.id === mb)) mailbox = mb;
     }
+
+    // Remember last used mailbox for follow-up commands like "prečítaj mail 1"
+    lastMailboxRef.current = mailbox;
 
     // ── SEND ──
     if (action === "send") {
