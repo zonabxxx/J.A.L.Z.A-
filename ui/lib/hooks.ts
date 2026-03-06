@@ -842,7 +842,7 @@ Odpovedz IBA JSON, nič iné.`;
       );
 
       const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
-      if (lastAssistant?.generatedImage && route.type === "chat") {
+      if (lastAssistant?.generatedImage && route.type === "text") {
         route = { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
       }
 
@@ -986,6 +986,65 @@ Odpovedz IBA JSON, nič iné.`;
 
   const sendVisionMessage = useCallback(
     async (content: string, imageBase64: string) => {
+      const lower = content.toLowerCase().trim();
+      const isEditRequest = /uprav|zmeň|zmen|pridaj|odober|odstraň|odstran|vymaz|vymaž|prefarbi|prefarb|nakresli|doplň|dopln|vymeň|vymen|štyliz|styliz|transformuj|urob|sprav|edit|change|add|remove|replace/i.test(lower);
+      const hasEditPrompt = content.trim().length > 0 && isEditRequest;
+
+      if (hasEditPrompt) {
+        const route: RouteResult = {
+          type: "image",
+          model: "gemini-image",
+          label: "Obrázok · edit",
+          icon: "🎨",
+        };
+        setCurrentRoute(route);
+
+        const userMsg: ChatMessage = { role: "user", content: `🎨 ${content}`, route };
+        const updated = [...messages, userMsg];
+        setMessages(updated);
+        setIsStreaming(true);
+
+        const loadingMsg: ChatMessage = { role: "assistant", content: "Upravujem obrázok…", route };
+        setMessages([...updated, loadingMsg]);
+
+        try {
+          const imageDataUrl = imageBase64.startsWith("data:")
+            ? imageBase64
+            : `data:image/png;base64,${imageBase64}`;
+
+          const res = await fetch("/api/generate-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: content, image: imageDataUrl }),
+          });
+          const data = await res.json();
+
+          if (data.image) {
+            const imgMsg: ChatMessage = {
+              role: "assistant",
+              content: data.text || "",
+              route,
+              generatedImage: data.image,
+            };
+            const finalMsgs = [...updated, imgMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+          } else {
+            const errMsg: ChatMessage = {
+              role: "assistant",
+              content: data.error || "Nepodarilo sa upraviť obrázok.",
+              route,
+            };
+            setMessages([...updated, errMsg]);
+          }
+        } catch {
+          setMessages([...updated, { role: "assistant", content: "Chyba pri editovaní obrázku.", route }]);
+        } finally {
+          setIsStreaming(false);
+        }
+        return;
+      }
+
       const route: RouteResult = {
         type: "text",
         model: "qwen2.5vl:3b",

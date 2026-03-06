@@ -4,7 +4,7 @@ import { GEMINI_API_KEY } from "@/lib/config";
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 
 export async function POST(req: NextRequest) {
-  const { prompt } = await req.json();
+  const { prompt, image: inputImage } = await req.json();
 
   if (!prompt) {
     return Response.json({ error: "Missing prompt" }, { status: 400 });
@@ -14,6 +14,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Gemini API key not configured" }, { status: 500 });
   }
 
+  const parts: Record<string, unknown>[] = [];
+
+  if (inputImage) {
+    const base64 = inputImage.replace(/^data:[^;]+;base64,/, "");
+    const mimeMatch = inputImage.match(/^data:([^;]+);base64,/);
+    const inputMime = mimeMatch?.[1] || "image/png";
+    parts.push({ inlineData: { mimeType: inputMime, data: base64 } });
+    parts.push({ text: `Edit this image: ${prompt}` });
+  } else {
+    parts.push({ text: `Generate an image: ${prompt}. Be creative and produce high quality results.` });
+  }
+
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
@@ -21,19 +33,13 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: `Generate an image: ${prompt}. Be creative and produce high quality results.` },
-              ],
-            },
-          ],
+          contents: [{ parts }],
           generationConfig: {
             responseModalities: ["TEXT", "IMAGE"],
             temperature: 1,
           },
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(90000),
       }
     );
 
@@ -43,13 +49,13 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    const parts = data.candidates?.[0]?.content?.parts || [];
+    const responseParts = data.candidates?.[0]?.content?.parts || [];
 
     let text = "";
     let imageBase64 = "";
     let mimeType = "image/png";
 
-    for (const part of parts) {
+    for (const part of responseParts) {
       if (part.text) {
         text += part.text;
       }
