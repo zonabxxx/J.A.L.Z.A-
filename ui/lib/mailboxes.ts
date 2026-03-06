@@ -24,7 +24,7 @@ export async function fetchMailboxes(): Promise<Mailbox[]> {
     if (res.ok) {
       const data = await res.json();
       if (data.mailboxes?.length) {
-        cachedMailboxes = data.mailboxes;
+        cachedMailboxes = data.mailboxes as Mailbox[];
         return cachedMailboxes;
       }
     }
