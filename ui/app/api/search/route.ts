@@ -23,6 +23,13 @@ export async function POST(req: NextRequest) {
     ...userMessages,
   ];
 
+  if (!GEMINI_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: "Gemini API kľúč nie je nastavený." }),
+      { status: 500 }
+    );
+  }
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FLASH_25}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
     {
@@ -36,6 +43,7 @@ export async function POST(req: NextRequest) {
           maxOutputTokens: 2048,
         },
       }),
+      signal: AbortSignal.timeout(30000),
     }
   );
 
