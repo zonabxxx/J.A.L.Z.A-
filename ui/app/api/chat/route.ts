@@ -89,9 +89,14 @@ function streamGemini(body: ReadableStream) {
 async function tryGeminiFallback(messages: { role: string; content: string }[]): Promise<Response | null> {
   if (!GEMINI_API_KEY) return null;
 
+  const systemMsg = messages.find(m => m.role === "system");
+  const systemPrompt = systemMsg?.content
+    ? `${systemMsg.content}\n\nDôležité: VŽDY odpovedaj po SLOVENSKY.`
+    : "Si J.A.L.Z.A., inteligentný osobný asistent. Odpovedáš VŽDY po SLOVENSKY. Si priateľský a stručný.";
+
   const contents = [
-    { role: "user", parts: [{ text: "Si J.A.L.Z.A., inteligentný osobný asistent. Odpovedáš VŽDY po SLOVENSKY. Si priateľský a stručný." }] },
-    { role: "model", parts: [{ text: "Rozumiem, som J.A.L.Z.A. a budem odpovedať po slovensky." }] },
+    { role: "user", parts: [{ text: systemPrompt }] },
+    { role: "model", parts: [{ text: "Rozumiem, budem odpovedať po slovensky na základe poskytnutého kontextu." }] },
     ...messages
       .filter(m => m.role !== "system")
       .map(m => ({
