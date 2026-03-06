@@ -21,7 +21,7 @@ if ! lsof -ti:8765 > /dev/null 2>&1; then
 fi
 
 # 3) Next.js
-if ! lsof -ti:3000 > /dev/null 2>&1; then
+if ! lsof -ti:3001 > /dev/null 2>&1; then
   echo "Starting Next.js..."
   cd "$JALZA_DIR/ui" && npm run dev >> "$JALZA_DIR/nextjs.log" 2>&1 &
   cd "$JALZA_DIR"
@@ -45,5 +45,5 @@ python3 bot.py >> "$JALZA_DIR/bot.log" 2>&1 &
 echo "=== All services started ==="
 echo "Ollama:      http://localhost:11434"
 echo "API:         http://localhost:8765"
-echo "UI:          http://localhost:3000"
+echo "UI:          http://localhost:3001"
 echo "Tunnel:      $(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' "$JALZA_DIR/tunnel.log" | tail -1)"

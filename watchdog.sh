@@ -57,7 +57,7 @@ if ! pgrep -f cloudflared > /dev/null 2>&1; then
 fi
 
 # 5) Next.js dev server (port 3000) — only if local
-if ! lsof -ti:3000 > /dev/null 2>&1; then
+if ! lsof -ti:3001 > /dev/null 2>&1; then
   log "RESTART Next.js dev server"
   cd "$UI_DIR"
   npm run dev >> "$JALZA_DIR/nextjs.log" 2>&1 &
