@@ -1399,6 +1399,18 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
 
+        # ── Mailboxes config ───────────────────────────────────────────
+        elif self.path == "/mailboxes":
+            try:
+                import json as _json
+                cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = _json.load(f)
+                mailboxes = cfg.get("mailboxes", [])
+                self._send_json({"mailboxes": mailboxes})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
         # ── Calendar endpoints ─────────────────────────────────────────
         elif self.path == "/calendar/list":
             body = self._read_body()

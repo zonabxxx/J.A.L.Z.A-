@@ -307,6 +307,9 @@ export default function Chat({
                       const cmd = mb === "adsun" ? "adsun maily" : mb === "juraj" ? "juraj maily" : "moje maily";
                       onSend(cmd);
                     }}
+                    onReadEmail={(num) => {
+                      onSend(`prečítaj mail ${num}`);
+                    }}
                   />
                   {msg.content && msg.content.length > 200 && (
                     <div className="mt-3 pt-3 border-t border-zinc-700/50 text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto break-words overflow-wrap-anywhere">

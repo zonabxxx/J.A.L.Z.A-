@@ -1,19 +1,14 @@
 "use client";
 import { useState } from "react";
 import type { EmailData } from "@/lib/hooks";
+import { useMailboxes } from "@/lib/mailboxes";
 
 interface Props {
   emails: EmailData[];
   mailbox?: string;
-  onAction?: (action: string, email: EmailData, index: number) => void;
   onMailboxChange?: (mailbox: string) => void;
+  onReadEmail?: (index: number) => void;
 }
-
-const MAILBOXES = [
-  { id: "personal", label: "Osobná", icon: "📧", email: "j.martinkovych@gmail.com" },
-  { id: "adsun", label: "Adsun", icon: "🏢", email: "info@adsun.sk" },
-  { id: "juraj", label: "Juraj", icon: "👤", email: "juraj@adsun.sk" },
-];
 
 function getInitials(from: string): string {
   const name = from.replace(/<.*>/, "").trim();
@@ -61,8 +56,9 @@ function extractName(from: string): string {
   return name || extractEmail(from);
 }
 
-export default function EmailCards({ emails, mailbox, onMailboxChange }: Props) {
-  const [activeMailbox, setActiveMailbox] = useState(mailbox || "personal");
+export default function EmailCards({ emails, mailbox, onMailboxChange, onReadEmail }: Props) {
+  const MAILBOXES = useMailboxes();
+  const [activeMailbox, setActiveMailbox] = useState(mailbox || MAILBOXES[0]?.id || "personal");
   const currentMb = MAILBOXES.find(m => m.id === activeMailbox) || MAILBOXES[0];
 
   const handleSwitch = (mbId: string) => {
@@ -107,10 +103,13 @@ export default function EmailCards({ emails, mailbox, onMailboxChange }: Props) 
           {emails.map((email, i) => (
             <div
               key={email.id || i}
-              className={`flex gap-3 p-3 rounded-xl border transition-colors cursor-default group ${
+              onClick={() => onReadEmail?.(i + 1)}
+              className={`flex gap-3 p-3 rounded-xl border transition-all group ${
+                onReadEmail ? "cursor-pointer active:scale-[0.98]" : "cursor-default"
+              } ${
                 email.unread
-                  ? "bg-zinc-800/80 border-blue-500/20 hover:bg-zinc-800"
-                  : "bg-zinc-800/40 border-zinc-700/30 hover:bg-zinc-800/60"
+                  ? "bg-zinc-800/80 border-blue-500/20 hover:bg-zinc-700/80"
+                  : "bg-zinc-800/40 border-zinc-700/30 hover:bg-zinc-700/50"
               }`}
             >
               <div
@@ -149,10 +148,15 @@ export default function EmailCards({ emails, mailbox, onMailboxChange }: Props) 
                 </div>
               </div>
 
-              <div className="flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                <span className="text-[10px] bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">
+              <div className="flex flex-col items-center justify-center gap-1 flex-shrink-0">
+                <span className="text-[10px] bg-zinc-700/60 text-zinc-500 px-1.5 py-0.5 rounded group-hover:bg-zinc-600 group-hover:text-zinc-300 transition-colors">
                   #{i + 1}
                 </span>
+                {onReadEmail && (
+                  <svg className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                )}
               </div>
             </div>
           ))}

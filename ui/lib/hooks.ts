@@ -11,41 +11,41 @@ import {
 import { parseEmailCommand, getContacts } from "./email-parser";
 import { AVAILABLE_MODELS, type ModelOption } from "./config";
 import { trackUsage } from "./usage-tracker";
+import { fetchMailboxes, buildMailboxPromptContext, detectMailboxByEmail, type Mailbox } from "./mailboxes";
 
-const GEMINI_EMAIL_SYSTEM = `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi a výplňovými slovami.
+function buildEmailSystemPrompt(mailboxes: Mailbox[]): string {
+  const mbList = buildMailboxPromptContext(mailboxes);
+  return `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi.
 
 TVOJA ÚLOHA: Pochop ZÁMER a odpovedz v JSON.
 
-KROK 1 — Rozpoznaj zámer (intent):
-- "send" = chce POSLAŤ / napísať / odoslať email (akýkoľvek tvar: poslať, posli, napíš, odošli, chcem poslat mail...)
-- "list" = chce VIDIEŤ / skontrolovať / prečítať svoje emaily
+INTENT:
+- "send" = chce POSLAŤ email
+- "list" = chce VIDIEŤ / skontrolovať emaily
 - "search" = chce HĽADAŤ konkrétny email
-- "cleanup" = chce VYMAZAŤ spam / staré / marketing emaily
+- "cleanup" = chce VYMAZAŤ spam / staré emaily
 - "read" = chce PREČÍTAŤ konkrétny email (číslo)
 - "reply" = chce ODPOVEDAŤ na email
 - "unknown" = nejasné
 
-KROK 2 — Pre "send" extrahuj:
-- subject: len PODSTATA predmetu (nie "predmet mailu je test" → len "Test")
-- body: len OBSAH emailu napísaný ako normálny email s pozdravom a podpisom "Juraj"
-- Ignoruj inštrukčné slová: "mailu je", "cez telo", "na predmet", "s tým že"
+DOSTUPNÉ SCHRÁNKY:
+${mbList}
+
+EXTRA POLIA (extrahuj z textu ak sú):
+- "limit": počet emailov (napr. "posledné 3" → limit:3)
+- "mailbox": ID schránky z vyššie uvedeného zoznamu. Urči podľa emailovej adresy alebo názvu schránky v správe.
+- "filter": ak chce filtrovať podľa mena/firmy/obsahu (napr. "od Mateja" → filter:"Matej")
+- "today": true ak chce dnešné
 
 ODPOVEDZ IBA JSON:
-- Send: {"intent":"send","subject":"Test","body":"Ahoj,\\ntoto je test.\\nS pozdravom,\\nJuraj"}
-- List: {"intent":"list","today":true}
-- Search: {"intent":"search","query":"faktúra"}
-- Cleanup: {"intent":"cleanup"}
-- Read: {"intent":"read","number":3}
-- Reply: {"intent":"reply","number":1}
-- Unknown: {"intent":"unknown"}
-
-PRÍKLADY:
-- "chcem poslať testovací mail predmet test telo testujem" → {"intent":"send","subject":"Test","body":"Ahoj,\\ntestujem.\\nS pozdravom,\\nJuraj"}
-- "aké maily mi dnes prišli" → {"intent":"list","today":true}
-- "hľadaj mail od Juraja o faktúre" → {"intent":"search","query":"Juraj faktúra"}
-- "prečítaj mail číslo 3" → {"intent":"read","number":3}
-- "vymaž spam" → {"intent":"cleanup"}
-- "napíš mail na adresu juraj @ adresu sk predmet test telo ahoj" → {"intent":"send","subject":"Test","body":"Ahoj,\\n\\nahoj.\\n\\nS pozdravom,\\nJuraj"}`;
+- {"intent":"send","subject":"Test","body":"Ahoj,\\ntoto je test.\\nS pozdravom,\\nJuraj"}
+- {"intent":"list","today":true,"limit":3,"mailbox":"juraj"}
+- {"intent":"list","filter":"Matej","mailbox":"adsun"}
+- {"intent":"search","query":"faktúra"}
+- {"intent":"read","number":3}
+- {"intent":"reply","number":1}
+- {"intent":"cleanup"}`;
+}
 
 export interface EmailData {
   from: string;
@@ -217,12 +217,21 @@ export function useChat(activeAgent: Agent | null) {
     trackUsage({ model: route.model, route: "email", outputText: text });
   };
 
-  const detectMailbox = (text: string): string => {
-    const l = text.toLowerCase();
-    if (/adsun|info@adsun|firemn[ýeé]|firma/.test(l)) return "adsun";
-    if (/juraj@|juraj\s*(adsun|mail)|moj\s*pracovn/.test(l)) return "juraj";
-    if (/osobn[áeé]|moje\s*mail|gmail|personal/.test(l)) return "personal";
-    return "personal";
+  const detectMailbox = (text: string, mailboxes: Mailbox[]): string => {
+    // First try exact email match from config
+    const emailMatch = detectMailboxByEmail(text, mailboxes);
+    if (emailMatch) return emailMatch;
+
+    // Then try label/id match
+    const lower = text.toLowerCase();
+    for (const mb of mailboxes) {
+      if (lower.includes(mb.id.toLowerCase()) || lower.includes(mb.label.toLowerCase())) {
+        return mb.id;
+      }
+    }
+
+    // Default to first mailbox
+    return mailboxes[0]?.id || "personal";
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -248,7 +257,7 @@ export function useChat(activeAgent: Agent | null) {
     route: RouteResult, msgs: ChatMessage[], convId: string | null
   ) => {
     pendingEmailRef.current = { to, subject, body, mailbox };
-    const mailboxLabel = mailbox === "adsun" ? "info@adsun.sk" : mailbox === "juraj" ? "juraj@adsun.sk" : "osobná schránka";
+    const mailboxLabel = mailbox;
     emailReply(
       `✉️ Návrh emailu (${mailboxLabel})\n\n` +
       `📬 Komu: ${to}\n` +
@@ -262,12 +271,14 @@ export function useChat(activeAgent: Agent | null) {
     );
   };
 
-  const callGemini = async (prompt: string): Promise<string | null> => {
+  const callGemini = async (prompt: string, mailboxes?: Mailbox[]): Promise<string | null> => {
     try {
+      const mbs = mailboxes || await fetchMailboxes();
+      const systemPrompt = buildEmailSystemPrompt(mbs);
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt: GEMINI_EMAIL_SYSTEM, prompt }),
+        body: JSON.stringify({ systemPrompt, prompt }),
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -285,7 +296,8 @@ export function useChat(activeAgent: Agent | null) {
     updatedMessages: ChatMessage[],
     convId: string | null
   ) => {
-    const mailbox = detectMailbox(userText);
+    const mailboxes = await fetchMailboxes();
+    let mailbox = detectMailbox(userText, mailboxes);
 
     // If draft is waiting for address, try to resolve
     if (draftEmailRef.current && draftEmailRef.current.missing.includes("adresa príjemcu")) {
@@ -308,8 +320,8 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    // Ask Gemini to understand intent
-    const geminiText = await callGemini(userText);
+    // Ask Gemini to understand intent (with dynamic mailbox list)
+    const geminiText = await callGemini(userText, mailboxes);
     if (!geminiText) {
       emailReply("Nepodarilo sa spojiť s Gemini. Skontroluj pripojenie.", route, updatedMessages, convId);
       return;
@@ -322,6 +334,12 @@ export function useChat(activeAgent: Agent | null) {
     }
 
     const action = (intent.intent as string) || "list";
+
+    // Override mailbox from Gemini intent if provided
+    if (intent.mailbox) {
+      const mb = (intent.mailbox as string).toLowerCase();
+      if (mb === "juraj" || mb === "adsun" || mb === "personal") mailbox = mb;
+    }
 
     // ── SEND ──
     if (action === "send") {
@@ -404,11 +422,36 @@ export function useChat(activeAgent: Agent | null) {
     // ── LIST (default) ──
     try {
       const today = !!(intent.today);
-      const res = await fetch(`/api/email?today=${today}&limit=20&mailbox=${mailbox}`);
+      const requestLimit = (intent.limit as number) || 20;
+      const filter = (intent.filter as string) || "";
+      const res = await fetch(`/api/email?today=${today}&limit=${Math.min(requestLimit * 2, 50)}&mailbox=${mailbox}`);
       const data = await res.json();
       if (data.error) { emailReply(`Chyba: ${data.error}`, route, updatedMessages, convId); return; }
-      const emails = data.emails || [];
-      if (emails.length === 0) { emailReply(today ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.", route, updatedMessages, convId); return; }
+      let emails = data.emails || [];
+
+      // Client-side filter by name/company/content
+      if (filter) {
+        const f = filter.toLowerCase();
+        emails = emails.filter((e: Record<string, unknown>) => {
+          const from = ((e.from as string) || (e.sender as string) || (e.sender_email as string) || "").toLowerCase();
+          const subj = ((e.subject as string) || "").toLowerCase();
+          const body = ((e.snippet as string) || (e.bodyPreview as string) || (e.body as string) || "").toLowerCase();
+          return from.includes(f) || subj.includes(f) || body.includes(f);
+        });
+      }
+
+      // Apply limit after filtering
+      if (intent.limit) {
+        emails = emails.slice(0, requestLimit);
+      }
+
+      if (emails.length === 0) {
+        const msg = filter
+          ? `Nenašiel som žiadne emaily pre "${filter}" v schránke ${mailbox}.`
+          : today ? "Dnes nemáš žiadne nové emaily." : "Nemáš žiadne neprečítané emaily.";
+        emailReply(msg, route, updatedMessages, convId);
+        return;
+      }
 
       const emailCards: EmailData[] = emails.map(toEmailData);
       emailReply("", route, updatedMessages, convId, { emails: emailCards, mailbox });
