@@ -249,6 +249,7 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
       desc: location ? `${location.city}, ${location.country}` : "Pre počasie a lokálne info",
     },
     { key: "autocorrect", icon: "✏️", label: "Auto-oprava textu", desc: "Opraví preklepy pred odoslaním" },
+    { key: "usProxy", icon: "🇺🇸", label: "US Proxy (VPN)", desc: "Obíde EU obmedzenia (obrázky ľudí)" },
   ];
 
   const Toggle = ({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) => (

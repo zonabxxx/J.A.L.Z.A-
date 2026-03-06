@@ -4,7 +4,22 @@ import { GEMINI_API_KEY } from "@/lib/config";
 const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 
 export async function POST(req: NextRequest) {
-  const { prompt, image: inputImage } = await req.json();
+  const { prompt, image: inputImage, useProxy } = await req.json();
+
+  if (useProxy && process.env.US_PROXY_URL) {
+    try {
+      const proxyRes = await fetch(`${process.env.US_PROXY_URL}/api/generate-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, image: inputImage }),
+        signal: AbortSignal.timeout(90000),
+      });
+      const proxyData = await proxyRes.json();
+      return Response.json(proxyData, { status: proxyRes.status });
+    } catch {
+      // proxy failed, continue with direct call
+    }
+  }
 
   if (!prompt) {
     return Response.json({ error: "Missing prompt" }, { status: 400 });

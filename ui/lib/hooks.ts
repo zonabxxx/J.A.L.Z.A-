@@ -12,6 +12,7 @@ import { parseEmailCommand, getContacts } from "./email-parser";
 import { AVAILABLE_MODELS, type ModelOption } from "./config";
 import { trackUsage } from "./usage-tracker";
 import { fetchMailboxes, buildMailboxPromptContext, detectMailboxByEmail, type Mailbox } from "./mailboxes";
+import { getFeatures } from "./features";
 
 function buildEmailSystemPrompt(mailboxes: Mailbox[]): string {
   const mbList = buildMailboxPromptContext(mailboxes);
@@ -877,7 +878,7 @@ Odpovedz IBA JSON, nič iné.`;
             const res = await fetch("/api/generate-image", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: content }),
+              body: JSON.stringify({ prompt: content, useProxy: getFeatures().usProxy }),
             });
             const data = await res.json();
 
@@ -1019,7 +1020,7 @@ Odpovedz IBA JSON, nič iné.`;
           const res = await fetch("/api/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: content, image: imageDataUrl }),
+            body: JSON.stringify({ prompt: content, image: imageDataUrl, useProxy: getFeatures().usProxy }),
           });
           const data = await res.json();
 

@@ -8,6 +8,7 @@ export interface FeatureFlags {
   autoRouting: boolean;
   locationSharing: boolean;
   autocorrect: boolean;
+  usProxy: boolean;
 }
 
 const DEFAULTS: FeatureFlags = {
@@ -18,6 +19,7 @@ const DEFAULTS: FeatureFlags = {
   autoRouting: true,
   locationSharing: false,
   autocorrect: true,
+  usProxy: false,
 };
 
 export function getFeatures(): FeatureFlags {
