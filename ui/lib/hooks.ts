@@ -831,12 +831,18 @@ Odpovedz IBA JSON, nič iné.`;
         pendingEmailRef.current = null;
       }
 
-      const route = await detectRoute(
+      let route = await detectRoute(
         content,
         !!activeAgent,
         activeAgent?.key,
         activeAgent?.name
       );
+
+      const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
+      if (lastAssistant?.generatedImage && route.type === "chat") {
+        route = { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
+      }
+
       setCurrentRoute(route);
 
       try {
