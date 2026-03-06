@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { GEMINI_API_KEY } from "@/lib/config";
 
-const IMAGE_MODEL = "gemini-2.0-flash-exp-image-generation";
+const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 
 export async function POST(req: NextRequest) {
   const { prompt } = await req.json();
