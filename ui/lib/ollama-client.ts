@@ -13,6 +13,7 @@ export function getOllamaUrl(path: string): string {
 export function ollamaHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "Bypass-Tunnel-Reminder": "yes",
   };
   if (USE_PROXY && JALZA_API_TOKEN) {
     headers["X-API-Token"] = JALZA_API_TOKEN;

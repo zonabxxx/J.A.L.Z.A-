@@ -28,13 +28,11 @@ if ! lsof -ti:3001 > /dev/null 2>&1; then
   sleep 3
 fi
 
-# 4) Cloudflare Tunnel
-if ! pgrep -f cloudflared > /dev/null 2>&1; then
-  echo "Starting Cloudflare Tunnel..."
-  "$HOME/bin/cloudflared" tunnel --url http://localhost:8765 >> "$JALZA_DIR/tunnel.log" 2>&1 &
-  sleep 8
-  TUNNEL_URL=$(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' "$JALZA_DIR/tunnel.log" | tail -1)
-  echo "Tunnel URL: $TUNNEL_URL"
+# 4) Localtunnel (fixed URL)
+if ! pgrep -f "localtunnel.*jalza-api" > /dev/null 2>&1; then
+  echo "Starting Localtunnel (jalza-api.loca.lt)..."
+  npx localtunnel --port 8765 --subdomain jalza-api >> "$JALZA_DIR/tunnel.log" 2>&1 &
+  sleep 5
 fi
 
 # 5) Telegram bot
@@ -46,4 +44,4 @@ echo "=== All services started ==="
 echo "Ollama:      http://localhost:11434"
 echo "API:         http://localhost:8765"
 echo "UI:          http://localhost:3001"
-echo "Tunnel:      $(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' "$JALZA_DIR/tunnel.log" | tail -1)"
+echo "Tunnel:      https://jalza-api.loca.lt"

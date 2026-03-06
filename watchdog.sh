@@ -44,15 +44,11 @@ if curl -sf --max-time 3 http://localhost:11434/api/tags > /dev/null 2>&1; then
   fi
 fi
 
-# 4) Cloudflare Tunnel
-if ! pgrep -f cloudflared > /dev/null 2>&1; then
-  log "RESTART Cloudflare Tunnel"
-  "$HOME/bin/cloudflared" tunnel --url http://localhost:8765 >> "$JALZA_DIR/tunnel.log" 2>&1 &
-  sleep 8
-  new_url=$(grep -o 'https://[a-z0-9\-]*\.trycloudflare\.com' "$JALZA_DIR/tunnel.log" | tail -1)
-  if [ -n "$new_url" ]; then
-    log "New tunnel URL: $new_url"
-  fi
+# 4) Localtunnel (fixed URL: jalza-api.loca.lt)
+if ! pgrep -f "localtunnel.*jalza-api" > /dev/null 2>&1; then
+  log "RESTART Localtunnel (jalza-api.loca.lt)"
+  npx localtunnel --port 8765 --subdomain jalza-api >> "$JALZA_DIR/tunnel.log" 2>&1 &
+  sleep 5
   restart_count=$((restart_count + 1))
 fi
 

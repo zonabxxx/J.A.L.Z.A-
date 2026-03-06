@@ -6,6 +6,7 @@ export async function backendFetch(
 ): Promise<Response> {
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
+  headers.set("Bypass-Tunnel-Reminder", "yes");
   if (JALZA_API_TOKEN) {
     headers.set("X-API-Token", JALZA_API_TOKEN);
   }
@@ -23,7 +24,9 @@ export async function backendPost(
 }
 
 export async function backendGet(path: string): Promise<Response> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    "Bypass-Tunnel-Reminder": "yes",
+  };
   if (JALZA_API_TOKEN) {
     headers["X-API-Token"] = JALZA_API_TOKEN;
   }
