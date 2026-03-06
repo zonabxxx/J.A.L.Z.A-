@@ -1399,6 +1399,98 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
 
+        # ── Calendar endpoints ─────────────────────────────────────────
+        elif self.path == "/calendar/list":
+            body = self._read_body()
+            try:
+                from calendar_agent import list_calendar_events
+                result = list_calendar_events(account=body.get("account", "juraj"), start=body.get("start"), end=body.get("end"), limit=body.get("limit", 20))
+                self._send_json({"events": result} if isinstance(result, list) else result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/today":
+            body = self._read_body()
+            try:
+                from calendar_agent import today_calendar
+                result = today_calendar(account=body.get("account", "juraj"))
+                self._send_json({"events": result} if isinstance(result, list) else result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/week":
+            body = self._read_body()
+            try:
+                from calendar_agent import week_calendar
+                result = week_calendar(account=body.get("account", "juraj"))
+                self._send_json({"events": result} if isinstance(result, list) else result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/get":
+            body = self._read_body()
+            event_id = body.get("id", "")
+            if not event_id:
+                self._send_json({"error": "id je povinné"}, 400)
+                return
+            try:
+                from calendar_agent import get_calendar_event
+                self._send_json(get_calendar_event(event_id, account=body.get("account", "juraj")))
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/create":
+            body = self._read_body()
+            subject = body.get("subject", "")
+            start = body.get("start", "")
+            end = body.get("end", "")
+            if not subject or not start or not end:
+                self._send_json({"error": "subject, start a end sú povinné"}, 400)
+                return
+            try:
+                from calendar_agent import create_calendar_event
+                result = create_calendar_event(subject=subject, start=start, end=end, account=body.get("account", "juraj"), location=body.get("location", ""), body=body.get("body", ""), attendees=body.get("attendees"), is_all_day=body.get("is_all_day", False))
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/update":
+            body = self._read_body()
+            event_id = body.get("id", "")
+            if not event_id:
+                self._send_json({"error": "id je povinné"}, 400)
+                return
+            try:
+                from calendar_agent import update_calendar_event
+                self._send_json(update_calendar_event(event_id, body.get("updates", {}), account=body.get("account", "juraj")))
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/delete":
+            body = self._read_body()
+            event_id = body.get("id", "")
+            if not event_id:
+                self._send_json({"error": "id je povinné"}, 400)
+                return
+            try:
+                from calendar_agent import delete_calendar_event
+                self._send_json(delete_calendar_event(event_id, account=body.get("account", "juraj")))
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
+        elif self.path == "/calendar/search":
+            body = self._read_body()
+            query = body.get("query", "")
+            if not query:
+                self._send_json({"error": "query je povinné"}, 400)
+                return
+            try:
+                from calendar_agent import search_calendar
+                result = search_calendar(query, account=body.get("account", "juraj"), limit=body.get("limit", 10))
+                self._send_json({"events": result} if isinstance(result, list) else result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+
         else:
             self._send_json({"error": "not found"}, 404)
 

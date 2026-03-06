@@ -1,6 +1,6 @@
 import { getFeatures } from "./features";
 
-export type RouteType = "text" | "search" | "email" | "knowledge" | "image";
+export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar";
 
 export interface RouteResult {
   type: RouteType;
@@ -61,6 +61,9 @@ export async function detectRoute(
       }
       if (data.route === "image") {
         return { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
+      }
+      if (data.route === "calendar") {
+        return { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
       }
     }
   } catch {

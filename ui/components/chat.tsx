@@ -8,6 +8,7 @@ import { AVAILABLE_MODELS, type ModelOption } from "@/lib/config";
 import VoiceButton from "./voice-button";
 import SpeakButton from "./speak-button";
 import EmailCards from "./email-cards";
+import CalendarCards from "./calendar-cards";
 
 interface Props {
   messages: ChatMessage[];
@@ -48,6 +49,7 @@ function RouteBadge({ route }: { route: RouteResult }) {
     knowledge: "bg-amber-600/20 text-amber-400",
     email: "bg-blue-600/20 text-blue-400",
     image: "bg-pink-600/20 text-pink-400",
+    calendar: "bg-teal-600/20 text-teal-400",
   };
   return (
     <span
@@ -244,6 +246,9 @@ export default function Chat({
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-pink-600/10 text-pink-400">
                   🎨 Obrázky
                 </span>
+                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-teal-600/10 text-teal-400">
+                  📅 Kalendár
+                </span>
               </div>
             </div>
           </div>
@@ -261,7 +266,14 @@ export default function Chat({
                   {msg.content && features.voiceOutput && <SpeakButton text={msg.content} />}
                 </div>
               )}
-              {msg.generatedImage ? (
+              {msg.calendarEvents && msg.calendarEvents.length > 0 ? (
+                <div className="rounded-2xl px-3 md:px-4 py-3 bg-zinc-800/50 text-zinc-200 border border-zinc-700/50 space-y-2">
+                  {msg.content && (
+                    <div className="text-xs text-zinc-400 font-medium">{msg.content}</div>
+                  )}
+                  <CalendarCards events={msg.calendarEvents} />
+                </div>
+              ) : msg.generatedImage ? (
                 <div className="rounded-2xl overflow-hidden bg-zinc-800/50 border border-zinc-700/50">
                   <img
                     src={msg.generatedImage}

@@ -8,6 +8,7 @@ KATEGÓRIE:
 - "search" — používateľ potrebuje AKTUÁLNE informácie z internetu (počasie, novinky, ceny, kurzy, firmy, produkty, recepty, osoby, udalosti, šport, vyhľadávanie čohokoľvek na webe)
 - "email" — používateľ chce pracovať s emailami (poslať, čítať, odpovedať, hľadať, vymazať, spam, pošta, mail)
 - "image" — používateľ chce VYGENEROVAŤ/VYTVORIŤ obrázok, kresbu, ilustráciu, logo, design, grafiku (nakresli, vygeneruj obrázok, vytvor obrázok, urob mi obrázok, nakresli mi, namaľuj, design, logo, ilustrácia)
+- "calendar" — používateľ chce pracovať s KALENDÁROM (stretnutie, schôdzka, meeting, udalosť, čo mám dnes, program, vytvor stretnutie, zruš meeting, presuň, kalendár, kedy mám, diary, agenda, termín)
 - "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom)
 
 PRAVIDLÁ:
@@ -16,9 +17,10 @@ PRAVIDLÁ:
 - "vyhľadaj", "nájdi", "aké je počasie", "koľko stojí", "čo je nové" → "search"
 - "pošli mail", "maily", "email", "napíš mail", "odpoveď na mail" → "email"
 - "nakresli", "vygeneruj obrázok", "vytvor obrázok", "nakresli mi", "namaľuj", "urob logo" → "image"
+- "čo mám dnes", "aký mám program", "stretnutie", "meeting", "schôdzka", "kalendár", "vytvor udalosť", "kedy mám" → "calendar"
 - Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
-Odpovedz IBA jedným slovom: search, email, image, alebo chat`;
+Odpovedz IBA jedným slovom: search, email, image, calendar, alebo chat`;
 
 async function classifyWithGemini(message: string): Promise<string | null> {
   if (!GEMINI_API_KEY) return null;
@@ -74,6 +76,7 @@ function parseRoute(text: string | null): string {
   if (text.includes("search")) return "search";
   if (text.includes("email")) return "email";
   if (text.includes("image")) return "image";
+  if (text.includes("calendar")) return "calendar";
   return "chat";
 }
 

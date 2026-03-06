@@ -56,11 +56,27 @@ export interface EmailData {
   unread?: boolean;
 }
 
+export interface CalendarEventData {
+  id: string;
+  subject: string;
+  start: string;
+  end: string;
+  is_all_day: boolean;
+  location: string;
+  organizer: string;
+  organizer_email: string;
+  attendees?: { name: string; email: string; status: string }[];
+  preview?: string;
+  body?: string;
+  web_link?: string;
+}
+
 export interface ChatMessage extends Message {
   route?: RouteResult;
   emails?: EmailData[];
   mailbox?: string;
   generatedImage?: string;
+  calendarEvents?: CalendarEventData[];
 }
 
 export function useChat(activeAgent: Agent | null) {
@@ -401,6 +417,157 @@ export function useChat(activeAgent: Agent | null) {
     }
   };
 
+  const calendarReply = (
+    text: string,
+    route: RouteResult,
+    msgs: ChatMessage[],
+    convId: string | null,
+    events?: CalendarEventData[]
+  ) => {
+    const msg: ChatMessage = { role: "assistant", content: text, route };
+    if (events) msg.calendarEvents = events;
+    const finalMsgs: ChatMessage[] = [...msgs, msg];
+    setMessages(finalMsgs);
+    debouncedSave(finalMsgs, convId);
+    trackUsage({ model: route.model, route: "calendar", outputText: text });
+  };
+
+  const handleCalendarInChat = async (
+    userText: string,
+    route: RouteResult,
+    updatedMessages: ChatMessage[],
+    convId: string | null
+  ) => {
+    const loadingMsg: ChatMessage = { role: "assistant", content: "", route };
+    setMessages([...updatedMessages, loadingMsg]);
+
+    // Use Gemini to classify the calendar intent
+    const calPrompt = `Analyzuj túto správu o kalendári a vráť JSON:
+- "list" — zobraziť udalosti (dnes, tento týždeň, dátum)
+- "create" — vytvoriť novú udalosť
+- "delete" — zmazať udalosť
+- "search" — hľadať udalosť
+
+Pre "list": {"action":"list","period":"today"|"week"|"month"}
+Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"..."}
+Pre "delete": {"action":"delete","number":1}
+Pre "search": {"action":"search","query":"..."}
+
+Dnešný dátum: ${new Date().toISOString().slice(0, 10)}
+Správa: "${userText}"
+Odpovedz IBA JSON, nič iné.`;
+
+    let intent: Record<string, unknown> = { action: "list", period: "today" };
+    try {
+      const classRes = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: calPrompt }),
+      });
+      const classData = await classRes.json();
+      const raw = (classData.text || classData.content || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      intent = JSON.parse(raw);
+    } catch {
+      // default to today's list
+    }
+
+    const action = (intent.action as string) || "list";
+
+    // ── CREATE ──
+    if (action === "create") {
+      const subject = (intent.subject as string) || "Nová udalosť";
+      const date = (intent.date as string) || new Date().toISOString().slice(0, 10);
+      const time = (intent.time as string) || "09:00";
+      const durationH = (intent.duration_hours as number) || 1;
+      const location = (intent.location as string) || "";
+
+      const start = `${date}T${time}:00`;
+      const endDate = new Date(new Date(start).getTime() + durationH * 3600000);
+      const end = endDate.toISOString().slice(0, 19);
+
+      try {
+        const res = await fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create",
+            subject,
+            start,
+            end,
+            location,
+            account: "juraj",
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          calendarReply(`Chyba: ${data.error}`, route, updatedMessages, convId);
+        } else {
+          calendarReply(
+            `✅ Udalosť vytvorená!\n\n📅 ${subject}\n🕐 ${date} ${time} (${durationH}h)${location ? `\n📍 ${location}` : ""}`,
+            route, updatedMessages, convId,
+            [data]
+          );
+        }
+      } catch {
+        calendarReply("Nepodarilo sa vytvoriť udalosť.", route, updatedMessages, convId);
+      }
+      return;
+    }
+
+    // ── SEARCH ──
+    if (action === "search") {
+      const query = (intent.query as string) || userText;
+      try {
+        const res = await fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "search", query, account: "juraj" }),
+        });
+        const data = await res.json();
+        const events = data.events || [];
+        if (events.length === 0) {
+          calendarReply(`Nenašiel som žiadne udalosti pre "${query}".`, route, updatedMessages, convId);
+        } else {
+          calendarReply(`Výsledky pre "${query}":`, route, updatedMessages, convId, events);
+        }
+      } catch {
+        calendarReply("Nepodarilo sa vyhľadať v kalendári.", route, updatedMessages, convId);
+      }
+      return;
+    }
+
+    // ── DELETE ──
+    if (action === "delete") {
+      const num = (intent.number as number) || 1;
+      calendarReply(
+        `Pre zmazanie udalosti č. ${num} mi najprv zobraz kalendár príkazom "čo mám dnes" alebo "tento týždeň".`,
+        route, updatedMessages, convId
+      );
+      return;
+    }
+
+    // ── LIST (default) ──
+    const period = (intent.period as string) || "today";
+    try {
+      const view = period === "week" || period === "month" ? "week" : "today";
+      const res = await fetch(`/api/calendar?view=${view}&account=juraj`);
+      const data = await res.json();
+      if (data.error) {
+        calendarReply(`Chyba: ${data.error}`, route, updatedMessages, convId);
+        return;
+      }
+      const events = data.events || [];
+      const label = view === "today" ? "Dnešný program" : "Tento týždeň";
+      if (events.length === 0) {
+        calendarReply(view === "today" ? "Dnes nemáš žiadne udalosti. 🎉" : "Tento týždeň nemáš žiadne udalosti.", route, updatedMessages, convId);
+      } else {
+        calendarReply("", route, updatedMessages, convId, events);
+      }
+    } catch {
+      calendarReply("Nepodarilo sa načítať kalendár. Skontroluj pripojenie.", route, updatedMessages, convId);
+    }
+  };
+
   const sendMessage = useCallback(
     async (content: string) => {
       const userMsg: ChatMessage = { role: "user", content };
@@ -558,6 +725,11 @@ export function useChat(activeAgent: Agent | null) {
 
         if (route.type === "email") {
           await handleEmailInChat(content, route, updated, conversationId);
+          return;
+        }
+
+        if (route.type === "calendar") {
+          await handleCalendarInChat(content, route, updated, conversationId);
           return;
         }
 
