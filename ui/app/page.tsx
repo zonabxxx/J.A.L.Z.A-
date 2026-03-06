@@ -34,6 +34,7 @@ export default function Home() {
     loadConversation,
     selectedModel,
     setSelectedModel,
+    readEmailById,
   } = useChat(activeAgent);
 
   const [agents, setAgents] = useState<Record<string, Agent>>({});
@@ -175,6 +176,7 @@ export default function Home() {
             onMenuToggle={() => setSidebarOpen((p) => !p)}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            onReadEmail={readEmailById}
           />
         )}
         {activeTab === "email" && <EmailPanel />}

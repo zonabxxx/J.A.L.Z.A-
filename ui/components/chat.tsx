@@ -21,6 +21,7 @@ interface Props {
   onMenuToggle?: () => void;
   selectedModel: ModelOption;
   onModelChange: (model: ModelOption) => void;
+  onReadEmail?: (emailId: string, mailbox: string) => void;
 }
 
 function formatEmailBody(text: string): string {
@@ -71,6 +72,7 @@ export default function Chat({
   onMenuToggle,
   selectedModel,
   onModelChange,
+  onReadEmail,
 }: Props) {
   const [input, setInput] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -307,8 +309,11 @@ export default function Chat({
                       const cmd = mb === "adsun" ? "adsun maily" : mb === "juraj" ? "juraj maily" : "moje maily";
                       onSend(cmd);
                     }}
-                    onReadEmail={(num) => {
-                      onSend(`prečítaj mail ${num}`);
+                    onReadEmail={(idx) => {
+                      const email = msg.emails![idx - 1];
+                      if (email?.id && msg.mailbox && onReadEmail) {
+                        onReadEmail(email.id, msg.mailbox);
+                      }
                     }}
                   />
                   {msg.content && msg.content.length > 200 && (

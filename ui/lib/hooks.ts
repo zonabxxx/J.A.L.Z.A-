@@ -616,6 +616,52 @@ Odpovedz IBA JSON, nič iné.`;
     }
   };
 
+  const readEmailById = useCallback(
+    async (emailId: string, mailbox: string) => {
+      const route: RouteResult = { type: "email", model: "graph", label: "Email", icon: "📧" };
+      setCurrentRoute(route);
+      setIsStreaming(true);
+
+      const loadingMsg: ChatMessage = { role: "assistant", content: "", route };
+      const updated = [...messages, loadingMsg];
+      setMessages(updated);
+
+      try {
+        const res = await fetch("/api/email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "read", mailbox, id: emailId }),
+        });
+        const detail = await res.json();
+        if (detail.error) {
+          const errMsg: ChatMessage = { role: "assistant", content: `Chyba: ${detail.error}`, route };
+          setMessages([...messages, errMsg]);
+          debouncedSave([...messages, errMsg], conversationId);
+        } else {
+          const bodyText = detail.body?.content || detail.body || detail.snippet || "Bez obsahu";
+          const card: EmailData[] = [toEmailData({ ...detail, body: bodyText })];
+          const msg: ChatMessage = {
+            role: "assistant",
+            content: bodyText,
+            route,
+            emails: card,
+            mailbox,
+          };
+          const finalMsgs = [...messages, msg];
+          setMessages(finalMsgs);
+          debouncedSave(finalMsgs, conversationId);
+        }
+      } catch {
+        const errMsg: ChatMessage = { role: "assistant", content: "Nepodarilo sa prečítať email.", route };
+        setMessages([...messages, errMsg]);
+      } finally {
+        setIsStreaming(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages, conversationId]
+  );
+
   const sendMessage = useCallback(
     async (content: string) => {
       const userMsg: ChatMessage = { role: "user", content };
@@ -979,5 +1025,6 @@ Odpovedz IBA JSON, nič iné.`;
     loadConversation,
     selectedModel,
     setSelectedModel,
+    readEmailById,
   };
 }
