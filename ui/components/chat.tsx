@@ -22,6 +22,7 @@ interface Props {
   selectedModel: ModelOption;
   onModelChange: (model: ModelOption) => void;
   onReadEmail?: (emailId: string, mailbox: string) => void;
+  onStop?: () => void;
 }
 
 function formatEmailBody(text: string): string {
@@ -73,6 +74,7 @@ export default function Chat({
   selectedModel,
   onModelChange,
   onReadEmail,
+  onStop,
 }: Props) {
   const [input, setInput] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -80,6 +82,8 @@ export default function Chat({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [isAutocorrecting, setIsAutocorrecting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,8 +106,28 @@ export default function Chat({
     inputRef.current?.focus();
   }, [activeAgent]);
 
-  const handleSubmit = () => {
-    if (isStreaming) return;
+  const autocorrect = async (text: string): Promise<string> => {
+    try {
+      setIsAutocorrecting(true);
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: text,
+          systemPrompt: "Oprav preklepy a gramatiku v nasledujúcom texte. Zachovaj pôvodný význam, jazyk a štýl. Vráť IBA opravený text, nič iné. Ak je text správny, vráť ho bez zmeny. Nemeň slová, iba oprav zjavné preklepy.",
+        }),
+      });
+      const data = await res.json();
+      return data.text || text;
+    } catch {
+      return text;
+    } finally {
+      setIsAutocorrecting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (isStreaming || isAutocorrecting) return;
     if (imageBase64 && onSendVision) {
       onSendVision(input.trim(), imageBase64);
       setInput("");
@@ -113,7 +137,15 @@ export default function Chat({
     }
     const trimmed = input.trim();
     if (!trimmed) return;
-    onSend(trimmed);
+
+    const corrected = features.autocorrect ? await autocorrect(trimmed) : trimmed;
+
+    if (editingIdx !== null) {
+      onSend(corrected);
+      setEditingIdx(null);
+    } else {
+      onSend(corrected);
+    }
     setInput("");
   };
 
@@ -323,19 +355,36 @@ export default function Chat({
                   )}
                 </div>
               ) : (
-                <div
-                  className={`rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-zinc-800 text-zinc-200"
-                  }`}
-                >
-                  {msg.content || (
-                    <span className="inline-flex gap-1">
-                      <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" />
-                      <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.1s]" />
-                      <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    </span>
+                <div className="group relative">
+                  <div
+                    className={`rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === "user"
+                        ? "bg-blue-600 text-white"
+                        : "bg-zinc-800 text-zinc-200"
+                    }`}
+                  >
+                    {msg.content || (
+                      <span className="inline-flex gap-1">
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" />
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.1s]" />
+                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                      </span>
+                    )}
+                  </div>
+                  {msg.role === "user" && !isStreaming && (
+                    <button
+                      onClick={() => {
+                        setInput(msg.content);
+                        setEditingIdx(i);
+                        inputRef.current?.focus();
+                      }}
+                      className="absolute -bottom-1 -left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-full p-1"
+                      title="Upraviť prompt"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                      </svg>
+                    </button>
                   )}
                 </div>
               )}
@@ -363,6 +412,22 @@ export default function Chat({
             >
               ✕
             </button>
+          </div>
+        )}
+        {editingIdx !== null && (
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <span className="text-[10px] text-amber-400">✏️ Upravuješ prompt</span>
+            <button
+              onClick={() => { setEditingIdx(null); setInput(""); }}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300"
+            >
+              Zrušiť
+            </button>
+          </div>
+        )}
+        {isAutocorrecting && (
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <span className="text-[10px] text-blue-400 animate-pulse">✏️ Opravujem preklepy…</span>
           </div>
         )}
         <div className="flex items-end gap-2 bg-zinc-900 border rounded-2xl px-3 md:px-4 py-2">
@@ -416,25 +481,34 @@ export default function Chat({
               readOnly={!!interimText}
             />
           </div>
-          <button
-            onClick={handleSubmit}
-            disabled={isStreaming || !input.trim()}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 text-white p-2 rounded-xl transition-colors flex-shrink-0"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          {isStreaming ? (
+            <button
+              onClick={onStop}
+              className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-xl transition-colors flex-shrink-0"
+              title="Zastaviť"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 12h14M12 5l7 7-7 7"
-              />
-            </svg>
-          </button>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isAutocorrecting || !input.trim()}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 text-white p-2 rounded-xl transition-colors flex-shrink-0"
+            >
+              {isAutocorrecting ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

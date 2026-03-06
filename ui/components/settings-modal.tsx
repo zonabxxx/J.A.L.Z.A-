@@ -248,6 +248,7 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
       label: "Zdieľanie polohy",
       desc: location ? `${location.city}, ${location.country}` : "Pre počasie a lokálne info",
     },
+    { key: "autocorrect", icon: "✏️", label: "Auto-oprava textu", desc: "Opraví preklepy pred odoslaním" },
   ];
 
   const Toggle = ({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) => (

@@ -86,6 +86,7 @@ export function useChat(activeAgent: Agent | null) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelOption>(AVAILABLE_MODELS[0]);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const abortRef = useRef<AbortController | null>(null);
 
   const pendingEmailRef = useRef<{
     to: string;
@@ -697,7 +698,9 @@ Odpovedz IBA JSON, nič iné.`;
       setMessages(updated);
       setIsStreaming(true);
 
-      // Check for pending email modifications or confirmation
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       const lowerTrimmed = content.toLowerCase().trim();
 
       if (pendingEmailRef.current) {
@@ -1048,6 +1051,14 @@ Odpovedz IBA JSON, nič iné.`;
     }
   }, []);
 
+  const stopGeneration = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setIsStreaming(false);
+  }, []);
+
   return {
     messages,
     isStreaming,
@@ -1060,5 +1071,6 @@ Odpovedz IBA JSON, nič iné.`;
     selectedModel,
     setSelectedModel,
     readEmailById,
+    stopGeneration,
   };
 }

@@ -35,6 +35,7 @@ export default function Home() {
     selectedModel,
     setSelectedModel,
     readEmailById,
+    stopGeneration,
   } = useChat(activeAgent);
 
   const [agents, setAgents] = useState<Record<string, Agent>>({});
@@ -177,6 +178,7 @@ export default function Home() {
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
             onReadEmail={readEmailById}
+            onStop={stopGeneration}
           />
         )}
         {activeTab === "email" && <EmailPanel />}

@@ -7,6 +7,7 @@ export interface FeatureFlags {
   voiceOutput: boolean;
   autoRouting: boolean;
   locationSharing: boolean;
+  autocorrect: boolean;
 }
 
 const DEFAULTS: FeatureFlags = {
@@ -16,6 +17,7 @@ const DEFAULTS: FeatureFlags = {
   voiceOutput: true,
   autoRouting: true,
   locationSharing: false,
+  autocorrect: true,
 };
 
 export function getFeatures(): FeatureFlags {
