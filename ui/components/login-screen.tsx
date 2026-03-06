@@ -92,8 +92,13 @@ export default function LoginScreen({ onLogin }: Props) {
           </div>
         )}
 
-        <div className="space-y-3">
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+          className="space-y-3"
+          autoComplete="on"
+        >
           <input
+            name="username"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Meno"
@@ -102,9 +107,9 @@ export default function LoginScreen({ onLogin }: Props) {
             className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           />
           <input
+            name="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             type="password"
             placeholder="Heslo (min. 6 znakov)"
             autoComplete={isRegistration ? "new-password" : "current-password"}
@@ -117,12 +122,13 @@ export default function LoginScreen({ onLogin }: Props) {
               onChange={(e) => setSetupKey(e.target.value)}
               type="password"
               placeholder="Registračný kľúč"
+              autoComplete="off"
               className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
             />
           )}
 
           <button
-            onClick={handleSubmit}
+            type="submit"
             disabled={loading || !name.trim() || password.length < 6}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed text-white py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
           >
@@ -149,7 +155,7 @@ export default function LoginScreen({ onLogin }: Props) {
             ) : null}
             {isRegistration ? "Vytvoriť účet" : "Prihlásiť sa"}
           </button>
-        </div>
+        </form>
 
         {!isRegistration && (
           <button
