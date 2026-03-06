@@ -60,6 +60,7 @@ export interface ChatMessage extends Message {
   route?: RouteResult;
   emails?: EmailData[];
   mailbox?: string;
+  generatedImage?: string;
 }
 
 export function useChat(activeAgent: Agent | null) {
@@ -557,6 +558,53 @@ export function useChat(activeAgent: Agent | null) {
 
         if (route.type === "email") {
           await handleEmailInChat(content, route, updated, conversationId);
+          return;
+        }
+
+        if (route.type === "image") {
+          const assistantMsg: ChatMessage = { role: "assistant", content: "", route };
+          const withAssistant = [...updated, assistantMsg];
+          setMessages(withAssistant);
+
+          try {
+            const res = await fetch("/api/generate-image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: content }),
+            });
+            const data = await res.json();
+
+            if (data.image) {
+              const imgMsg: ChatMessage = {
+                role: "assistant",
+                content: data.text || "",
+                route,
+                generatedImage: data.image,
+              };
+              const finalMsgs = [...updated, imgMsg];
+              setMessages(finalMsgs);
+              debouncedSave(finalMsgs, conversationId);
+              trackUsage({ model: "gemini-image", route: "image", outputText: data.text || "" });
+            } else {
+              const errMsg: ChatMessage = {
+                role: "assistant",
+                content: data.error || "Nepodarilo sa vygenerovať obrázok.",
+                route,
+              };
+              const finalMsgs = [...updated, errMsg];
+              setMessages(finalMsgs);
+              debouncedSave(finalMsgs, conversationId);
+            }
+          } catch {
+            const errMsg: ChatMessage = {
+              role: "assistant",
+              content: "Chyba pri generovaní obrázku. Skontroluj pripojenie.",
+              route,
+            };
+            setMessages([...updated, errMsg]);
+          } finally {
+            setIsStreaming(false);
+          }
           return;
         }
 

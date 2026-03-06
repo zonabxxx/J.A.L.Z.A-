@@ -1,6 +1,6 @@
 import { getFeatures } from "./features";
 
-export type RouteType = "text" | "search" | "email" | "knowledge";
+export type RouteType = "text" | "search" | "email" | "knowledge" | "image";
 
 export interface RouteResult {
   type: RouteType;
@@ -58,6 +58,9 @@ export async function detectRoute(
       }
       if (data.route === "email" && features.emailAccess) {
         return { type: "email", model: "jalza", label: "Email", icon: "📧" };
+      }
+      if (data.route === "image") {
+        return { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
       }
     }
   } catch {

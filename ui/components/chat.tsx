@@ -47,6 +47,7 @@ function RouteBadge({ route }: { route: RouteResult }) {
     search: "bg-emerald-600/20 text-emerald-400",
     knowledge: "bg-amber-600/20 text-amber-400",
     email: "bg-blue-600/20 text-blue-400",
+    image: "bg-pink-600/20 text-pink-400",
   };
   return (
     <span
@@ -240,6 +241,9 @@ export default function Chat({
                 <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-blue-600/10 text-blue-400">
                   📧 Email
                 </span>
+                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-pink-600/10 text-pink-400">
+                  🎨 Obrázky
+                </span>
               </div>
             </div>
           </div>
@@ -257,7 +261,29 @@ export default function Chat({
                   {msg.content && features.voiceOutput && <SpeakButton text={msg.content} />}
                 </div>
               )}
-              {msg.emails && msg.emails.length > 0 ? (
+              {msg.generatedImage ? (
+                <div className="rounded-2xl overflow-hidden bg-zinc-800/50 border border-zinc-700/50">
+                  <img
+                    src={msg.generatedImage}
+                    alt={msg.content || "Generated image"}
+                    className="w-full max-w-md rounded-t-2xl"
+                  />
+                  {msg.content && (
+                    <div className="px-3 py-2 text-sm text-zinc-300">
+                      {msg.content}
+                    </div>
+                  )}
+                  <div className="px-3 pb-2 flex gap-2">
+                    <a
+                      href={msg.generatedImage}
+                      download="jalza-image.png"
+                      className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      Stiahnuť
+                    </a>
+                  </div>
+                </div>
+              ) : msg.emails && msg.emails.length > 0 ? (
                 <div className="rounded-2xl px-3 md:px-4 py-3 bg-zinc-800/50 text-zinc-200 border border-zinc-700/50 space-y-3">
                   {msg.content && (
                     <div className="text-xs text-zinc-400 font-medium">{msg.content.length > 200 ? "" : msg.content}</div>

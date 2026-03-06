@@ -7,6 +7,7 @@ const CLASSIFY_PROMPT = `Si inteligentný router pre AI asistenta J.A.L.Z.A. Ana
 KATEGÓRIE:
 - "search" — používateľ potrebuje AKTUÁLNE informácie z internetu (počasie, novinky, ceny, kurzy, firmy, produkty, recepty, osoby, udalosti, šport, vyhľadávanie čohokoľvek na webe)
 - "email" — používateľ chce pracovať s emailami (poslať, čítať, odpovedať, hľadať, vymazať, spam, pošta, mail)
+- "image" — používateľ chce VYGENEROVAŤ/VYTVORIŤ obrázok, kresbu, ilustráciu, logo, design, grafiku (nakresli, vygeneruj obrázok, vytvor obrázok, urob mi obrázok, nakresli mi, namaľuj, design, logo, ilustrácia)
 - "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom)
 
 PRAVIDLÁ:
@@ -14,9 +15,10 @@ PRAVIDLÁ:
 - Ak si nie si istý či treba aktuálne dáta → "search"
 - "vyhľadaj", "nájdi", "aké je počasie", "koľko stojí", "čo je nové" → "search"
 - "pošli mail", "maily", "email", "napíš mail", "odpoveď na mail" → "email"
+- "nakresli", "vygeneruj obrázok", "vytvor obrázok", "nakresli mi", "namaľuj", "urob logo" → "image"
 - Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
-Odpovedz IBA jedným slovom: search, email, alebo chat`;
+Odpovedz IBA jedným slovom: search, email, image, alebo chat`;
 
 async function classifyWithGemini(message: string): Promise<string | null> {
   if (!GEMINI_API_KEY) return null;
@@ -71,6 +73,7 @@ function parseRoute(text: string | null): string {
   if (!text) return "chat";
   if (text.includes("search")) return "search";
   if (text.includes("email")) return "email";
+  if (text.includes("image")) return "image";
   return "chat";
 }
 
