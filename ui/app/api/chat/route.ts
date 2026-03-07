@@ -89,14 +89,9 @@ function streamGemini(body: ReadableStream) {
 async function tryGeminiFallback(messages: { role: string; content: string }[]): Promise<Response | null> {
   if (!GEMINI_API_KEY) return null;
 
-  const systemMsg = messages.find(m => m.role === "system");
-  const systemPrompt = systemMsg?.content
-    ? `${systemMsg.content}\n\nDôležité: VŽDY odpovedaj po SLOVENSKY.`
-    : "Si J.A.L.Z.A., inteligentný osobný asistent. Odpovedáš VŽDY po SLOVENSKY. Si priateľský a stručný.";
-
   const contents = [
-    { role: "user", parts: [{ text: systemPrompt }] },
-    { role: "model", parts: [{ text: "Rozumiem, budem odpovedať po slovensky na základe poskytnutého kontextu." }] },
+    { role: "user", parts: [{ text: "Si J.A.L.Z.A., inteligentný AI asistent. Odpovedáš VŽDY po SLOVENSKY. Buď stručný, vecný a presný." }] },
+    { role: "model", parts: [{ text: "Rozumiem, budem odpovedať po slovensky." }] },
     ...messages
       .filter(m => m.role !== "system")
       .map(m => ({
@@ -112,7 +107,7 @@ async function tryGeminiFallback(messages: { role: string; content: string }[]):
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents, generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       }
     );
     if (!res.ok || !res.body) return null;
@@ -155,7 +150,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: ollamaHeaders(),
       body: JSON.stringify({ model: useModel, messages: finalMessages, stream: true }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(180000),
     });
 
     if (res.ok && res.body) {
