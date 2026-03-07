@@ -172,17 +172,16 @@ export async function POST(req: NextRequest) {
   if (geminiRes) {
     const encoder = new TextEncoder();
     const notice = `⚠️ *Lokálny model nedostupný (${ollamaError}), odpovedá Gemini — bez osobných dát.*\n\n`;
-    const noticeStream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: notice })}\n\n`));
-        controller.close();
-      },
-    });
     const combined = new ReadableStream({
       async start(controller) {
-        for await (const chunk of noticeStream) controller.enqueue(chunk);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: notice })}\n\n`));
         if (geminiRes.body) {
-          for await (const chunk of geminiRes.body) controller.enqueue(chunk);
+          const reader = geminiRes.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
         }
         controller.close();
       },
