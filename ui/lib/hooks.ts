@@ -513,27 +513,40 @@ export function useChat(activeAgent: Agent | null) {
     const dayNames = ["nedeľa","pondelok","utorok","streda","štvrtok","piatok","sobota"];
     const todayName = dayNames[now.getDay()];
 
-    const calPrompt = `Analyzuj túto správu o kalendári a vráť JSON:
-- "list" — zobraziť udalosti (dnes, tento týždeň, dátum)
+    const recentContext = updatedMessages
+      .slice(-6)
+      .map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`)
+      .join("\n");
+
+    const calPrompt = `Analyzuj konverzáciu o kalendári a vráť JSON.
+
+TYPY AKCIÍ:
+- "list" — zobraziť udalosti
 - "create" — vytvoriť novú udalosť
 - "delete" — zmazať udalosť
 - "search" — hľadať udalosť
 
+FORMÁTY:
 Pre "list": {"action":"list","period":"today"|"week"|"month"}
 Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"...","body":"...","attendees":["email1",...]}
 Pre "delete": {"action":"delete","number":1}
 Pre "search": {"action":"search","query":"..."}
 
-DÔLEŽITÉ:
+PRAVIDLÁ:
 - Dnešný dátum: ${now.toISOString().slice(0, 10)} (${todayName})
-- Ak používateľ povie "pondelok", mysli NAJBLIŽŠÍ pondelok.
+- Ak používateľ povie "pondelok", mysli NAJBLIŽŠÍ pondelok (ak dnes je sobota 7.3., tak pondelok = 2026-03-09).
 - Ak spomína firmu alebo adresu, daj ju do "location".
-- Ak spomína osoby, daj ich mená do "subject" (napr. "Stretnutie s Michalom a Petrom").
+- Ak spomína osoby, daj ich mená do "subject" (napr. "Stretnutie s Michalom Plachým").
 - Ak spomína popis alebo poznámku, daj to do "body".
 - "attendees" nechaj prázdne ak nie sú emaily.
 - Ak nespomína čas, použi 09:00 ako default.
+- AK POUŽÍVATEĽ POVIE "áno", "pridaj", "potvrď" alebo podobne — pozri sa na PREDCHÁDZAJÚCU konverzáciu a vytiahni detaily odtiaľ.
+- NIKDY nevracaj "subject":"Nová udalosť" ak v konverzácii sú konkrétne informácie.
 
-Správa: "${userText}"
+KONVERZÁCIA:
+${recentContext}
+
+POSLEDNÁ SPRÁVA: "${userText}"
 Odpovedz IBA JSON, nič iné.`;
 
     let intent: Record<string, unknown> = { action: "list", period: "today" };
