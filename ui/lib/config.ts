@@ -6,7 +6,7 @@ export const GEMINI_FLASH_25 = "gemini-2.5-flash";
 export const GEMINI_PRO = "gemini-2.5-pro";
 export const GEMINI_MODEL = GEMINI_FLASH;
 export const DEFAULT_MODEL = "jalza";
-export const VISION_MODEL = "qwen2.5vl:3b";
+export const VISION_MODEL = "llama3.2-vision:11b";
 export const JALZA_API_TOKEN = process.env.JALZA_API_TOKEN || "";
 export const SESSION_SECRET = process.env.JALZA_SESSION_SECRET || "fallback-change-me";
 

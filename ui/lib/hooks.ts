@@ -1118,7 +1118,7 @@ Odpovedz IBA JSON, nič iné.`;
 
       const route: RouteResult = {
         type: "text",
-        model: "qwen2.5vl:3b",
+        model: "llama3.2-vision:11b",
         label: "Vision",
         icon: "👁",
       };

@@ -4,7 +4,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "gemini-2.5-pro-preview-05-06": { input: 1.25 / 1_000_000, output: 10.00 / 1_000_000 },
   "jalza": { input: 0, output: 0 },
   "qwen2.5:72b": { input: 0, output: 0 },
-  "qwen2.5vl:3b": { input: 0, output: 0 },
+  "llama3.2-vision:11b": { input: 0, output: 0 },
   "nomic-embed-text": { input: 0, output: 0 },
 };
 
