@@ -1,0 +1,16 @@
+
+========== STEP 1 - LOGIN ==========
+SUCCESS: Logged in
+
+========== STEP 2 - MEMORY ==========
+"🧠 Zapamätal som si: moje obľúbené jedlo je pizza": YES
+SUCCESS
+
+========== STEP 3 - AGENT ==========
+🤖 Agent badge: NO
+Step-by-step (Krok 1, 2...): NO
+PARTIAL
+
+========== STEP 4 - SETTINGS (Push) ==========
+"🔔 Push notifikácie" toggle visible: YES
+SUCCESS

@@ -10,7 +10,7 @@ KATEGÓRIE:
 - "image" — používateľ chce VYGENEROVAŤ/VYTVORIŤ obrázok, kresbu, ilustráciu, logo, design, grafiku (nakresli, vygeneruj obrázok, vytvor obrázok, urob mi obrázok, nakresli mi, namaľuj, design, logo, ilustrácia)
 - "calendar" — používateľ chce pracovať s KALENDÁROM (stretnutie, schôdzka, meeting, udalosť, čo mám dnes, program, vytvor stretnutie, zruš meeting, presuň, kalendár, kedy mám, diary, agenda, termín)
 - "research" — používateľ chce aby AI VYHĽADAL informácie na webe a ULOŽIL ich do znalostnej databázy (nájdi info a ulož, urob research, preskúmaj firmu a pridaj do databázy, nauč sa o..., zisti všetko o... a zapamätaj si, pridaj zdroje o...)
-- "agent" — používateľ zadáva KOMPLEXNÚ ÚLOHU ktorá vyžaduje VIACERO KROKOV alebo použitie nástrojov (analyzuj, sprav audit, skontroluj systém, porovnaj, spracuj dáta, vytvor report, naprogramuj, napíš skript, urob analýzu, komplexná úloha, naplánuj a vykonaj, zautomatizuj, spusti príkaz)
+- "agent" — používateľ zadáva KOMPLEXNÚ ÚLOHU ktorá vyžaduje VIACERO KROKOV, použitie nástrojov, alebo prístup k súborom/systému (analyzuj, sprav audit, skontroluj systém, porovnaj, spracuj dáta, vytvor report, naprogramuj, napíš skript, urob analýzu, komplexná úloha, naplánuj a vykonaj, zautomatizuj, spusti príkaz, koľko súborov, vypíš súbory, analyzuj priečinok, preskúmaj adresár, čo je v priečinku)
 - "multi" — používateľ chce odpoveď zo VŠETKÝCH znalostných agentov naraz, alebo chce porovnať informácie z viacerých databáz (opýtaj sa všetkých agentov, spýtaj sa všetkých, čo vedia všetci agenti, porovnaj znalosti, cross-knowledge)
 - "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom, jednoduché otázky)
 
@@ -22,7 +22,7 @@ PRAVIDLÁ:
 - "nakresli", "vygeneruj obrázok", "vytvor obrázok", "nakresli mi", "namaľuj", "urob logo" → "image"
 - "čo mám dnes", "aký mám program", "stretnutie", "meeting", "schôdzka", "kalendár", "vytvor udalosť", "kedy mám" → "calendar"
 - "nájdi info a ulož", "urob research", "preskúmaj a pridaj", "nauč sa o", "zisti a zapamätaj", "pridaj do databázy" → "research"
-- "analyzuj systém", "sprav audit", "urob analýzu", "vytvor report", "porovnaj", "skontroluj a oprav", "spusti príkaz", "naprogramuj", "zautomatizuj", "komplexná úloha", "naplánuj a vykonaj" → "agent"
+- "analyzuj systém", "sprav audit", "urob analýzu", "vytvor report", "porovnaj", "skontroluj a oprav", "spusti príkaz", "naprogramuj", "zautomatizuj", "komplexná úloha", "naplánuj a vykonaj", "koľko súborov", "vypíš súbory", "analyzuj priečinok", "čo je v priečinku" → "agent"
 - "opýtaj sa všetkých agentov", "čo vedia agenti o", "spýtaj sa všetkých", "cross-knowledge" → "multi"
 - Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
