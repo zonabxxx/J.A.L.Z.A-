@@ -147,8 +147,11 @@ export async function POST(req: NextRequest) {
     } catch { /* fallback to regular chat */ }
   }
 
+  let ollamaError = "";
   try {
-    const res = await fetch(getOllamaUrl("/api/chat"), {
+    const ollamaUrl = getOllamaUrl("/api/chat");
+    console.log(`[chat] Ollama request to: ${ollamaUrl}`);
+    const res = await fetch(ollamaUrl, {
       method: "POST",
       headers: ollamaHeaders(),
       body: JSON.stringify({ model: useModel, messages: finalMessages, stream: true }),
@@ -158,10 +161,34 @@ export async function POST(req: NextRequest) {
     if (res.ok && res.body) {
       return new Response(streamOllama(res.body), { headers: SSE_HEADERS });
     }
-  } catch { /* Ollama failed — try Gemini */ }
+    ollamaError = `HTTP ${res.status}`;
+    console.log(`[chat] Ollama error: ${ollamaError}`);
+  } catch (err) {
+    ollamaError = err instanceof Error ? err.message : "unknown";
+    console.log(`[chat] Ollama exception: ${ollamaError}`);
+  }
 
   const geminiRes = await tryGeminiFallback(finalMessages);
-  if (geminiRes) return geminiRes;
+  if (geminiRes) {
+    const encoder = new TextEncoder();
+    const notice = `⚠️ *Lokálny model nedostupný (${ollamaError}), odpovedá Gemini — bez osobných dát.*\n\n`;
+    const noticeStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: notice })}\n\n`));
+        controller.close();
+      },
+    });
+    const combined = new ReadableStream({
+      async start(controller) {
+        for await (const chunk of noticeStream) controller.enqueue(chunk);
+        if (geminiRes.body) {
+          for await (const chunk of geminiRes.body) controller.enqueue(chunk);
+        }
+        controller.close();
+      },
+    });
+    return new Response(combined, { headers: SSE_HEADERS });
+  }
 
   return new Response(
     JSON.stringify({ error: "Ollama aj Gemini sú nedostupné. Skontroluj pripojenie." }),
