@@ -1,6 +1,6 @@
 import { getFeatures } from "./features";
 
-export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research" | "agent";
+export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research" | "agent" | "multi";
 
 export interface RouteResult {
   type: RouteType;
@@ -70,6 +70,9 @@ export async function detectRoute(
       }
       if (data.route === "agent") {
         return { type: "agent", model: "jalza", label: "Agent", icon: "🤖" };
+      }
+      if (data.route === "multi") {
+        return { type: "multi", model: "jalza", label: "Multi-Agent", icon: "🔗" };
       }
     }
   } catch {

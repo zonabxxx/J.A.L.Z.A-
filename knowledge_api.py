@@ -1070,6 +1070,49 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 logger.error(f"Agent run error: {e}")
                 self._send_json({"error": str(e)}, 500)
 
+        elif self.path == "/multi-agent":
+            body = self._read_body()
+            question = body.get("question", "")
+            agent_keys = body.get("agents", [])
+            if not question:
+                self._send_json({"error": "question required"}, 400)
+                return
+            if not agent_keys:
+                agent_keys = list(AGENTS.keys())
+
+            import requests as req
+            results_by_agent = {}
+            for key in agent_keys:
+                if key not in AGENTS:
+                    continue
+                cfg = AGENTS[key]
+                try:
+                    kb = KnowledgeBase(cfg["name"])
+                    search_results = kb.search(question, top_k=3)
+                    context = "\n".join(f"Zdroj: {r['title']}\n{r['content']}" for r in search_results)
+                    if not context.strip():
+                        results_by_agent[key] = {"agent": cfg["name"], "answer": "", "sources": 0}
+                        continue
+                    messages = [
+                        {"role": "system", "content": cfg.get("system_prompt", "")},
+                        {"role": "user", "content": f"{context}\n\nOTÁZKA: {question}"},
+                    ]
+                    r = req.post(
+                        "http://localhost:11434/api/chat",
+                        json={"model": "jalza", "messages": messages, "stream": False},
+                        timeout=120,
+                    )
+                    answer = r.json().get("message", {}).get("content", "")
+                    results_by_agent[key] = {
+                        "agent": cfg["name"],
+                        "answer": answer[:2000],
+                        "sources": len(search_results),
+                    }
+                except Exception as e:
+                    results_by_agent[key] = {"agent": cfg.get("name", key), "answer": "", "error": str(e)}
+
+            self._send_json({"question": question, "results": results_by_agent})
+
         elif self.path == "/files":
             body = self._read_body()
             action = body.get("action", "list")

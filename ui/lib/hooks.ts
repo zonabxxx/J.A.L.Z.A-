@@ -959,6 +959,49 @@ Odpovedz IBA JSON, nič iné.`;
           return;
         }
 
+        if (route.type === "multi") {
+          const multiMsg: ChatMessage = { role: "assistant", content: "🔗 **Multi-Agent** — dopytovanie všetkých znalostných agentov…", route };
+          setMessages([...updated, multiMsg]);
+
+          try {
+            const res = await fetch("/api/multi-agent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ question: content }),
+            });
+            const data = await res.json();
+
+            let summary = "";
+            if (data.error) {
+              summary = `❌ Chyba: ${data.error}`;
+            } else if (data.results) {
+              summary = `🔗 **Multi-Agent odpovede:**\n\n`;
+              for (const [key, val] of Object.entries(data.results)) {
+                const r = val as { agent: string; answer: string; sources: number; error?: string };
+                summary += `### 📚 ${r.agent}\n`;
+                if (r.error) {
+                  summary += `_Chyba: ${r.error}_\n\n`;
+                } else if (r.answer) {
+                  summary += `${r.answer}\n\n`;
+                } else {
+                  summary += `_Žiadne relevantné informácie_\n\n`;
+                }
+              }
+            }
+
+            const resultMsg: ChatMessage = { role: "assistant", content: summary, route };
+            const finalMsgs = [...updated, resultMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+            trackUsage({ model: "jalza-multi", route: "multi", outputText: summary });
+          } catch {
+            setMessages([...updated, { role: "assistant", content: "❌ Multi-agent zlyhalo.", route }]);
+          } finally {
+            setIsStreaming(false);
+          }
+          return;
+        }
+
         if (route.type === "agent") {
           const agentMsg: ChatMessage = { role: "assistant", content: "🤖 **Agent spustený** — pracujem na úlohe krok po kroku…", route };
           setMessages([...updated, agentMsg]);
