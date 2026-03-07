@@ -863,6 +863,36 @@ Odpovedz IBA JSON, nič iné.`;
         return;
       }
 
+      // If there's a pending calendar event, route follow-ups to calendar
+      const hasPendingCalendar = messages.some(m => m.pendingCalendarEvent);
+      if (hasPendingCalendar) {
+        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+        setCurrentRoute(calRoute);
+        try {
+          await handleCalendarInChat(content, calRoute, updated, conversationId);
+        } catch {
+          calendarReply("Chyba pri spracovaní kalendára.", calRoute, updated, conversationId);
+        } finally {
+          setIsStreaming(false);
+        }
+        return;
+      }
+
+      // If last assistant message was calendar-related, keep routing to calendar
+      const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant");
+      if (lastAssistantMsg?.calendarEvents && /ano|áno|ok|pridaj|potvrď|potvrd|zruš|zrus|zmen|zmeň|uprav|presuň|presun|yes|sure/i.test(lowerTrimmed)) {
+        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+        setCurrentRoute(calRoute);
+        try {
+          await handleCalendarInChat(content, calRoute, updated, conversationId);
+        } catch {
+          calendarReply("Chyba pri spracovaní kalendára.", calRoute, updated, conversationId);
+        } finally {
+          setIsStreaming(false);
+        }
+        return;
+      }
+
       // Cancel pending email only on clearly different topic
       if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd|potvrď|odosli|odošli|send|yes/i.test(lowerTrimmed)) {
         pendingEmailRef.current = null;
