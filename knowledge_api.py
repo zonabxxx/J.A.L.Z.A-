@@ -1019,6 +1019,46 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"error": "Unknown action"}, 400)
 
+        elif self.path == "/agent-run":
+            body = self._read_body()
+            prompt = body.get("prompt", "")
+            agent_key = body.get("agent", "")
+            if not prompt:
+                self._send_json({"error": "prompt required"}, 400)
+                return
+            try:
+                from agent import run_agent
+                priming = []
+                if agent_key and agent_key in AGENTS:
+                    agent_cfg = AGENTS[agent_key]
+                    kb = KnowledgeBase(agent_cfg["name"])
+                    results = kb.search(prompt, top_k=3)
+                    context = "\n".join(
+                        f"Zdroj: {r['title']}\n{r['content']}" for r in results
+                    )
+                    if context.strip():
+                        priming.append({
+                            "role": "system",
+                            "content": f"{agent_cfg.get('system_prompt', '')}\n\nKONTEXT:\n{context}",
+                        })
+                steps = run_agent(prompt, priming_messages=priming if priming else None)
+                final = ""
+                for s in reversed(steps):
+                    if s.get("tool") == "done" and s.get("result"):
+                        final = s["result"]
+                        break
+                if not final and steps:
+                    final = steps[-1].get("result", "Agent nedokončil úlohu.")
+                self._send_json({
+                    "status": "completed",
+                    "steps": steps,
+                    "final_answer": final,
+                    "total_steps": len(steps),
+                })
+            except Exception as e:
+                logger.error(f"Agent run error: {e}")
+                self._send_json({"error": str(e)}, 500)
+
         elif self.path == "/integrations/tts":
             body = self._read_body()
             text = body.get("text", "")

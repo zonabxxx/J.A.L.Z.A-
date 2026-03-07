@@ -1,6 +1,6 @@
 import { getFeatures } from "./features";
 
-export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research";
+export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research" | "agent";
 
 export interface RouteResult {
   type: RouteType;
@@ -67,6 +67,9 @@ export async function detectRoute(
       }
       if (data.route === "research") {
         return { type: "research", model: "gemini-2.0-flash", label: "Research", icon: "🔬" };
+      }
+      if (data.route === "agent") {
+        return { type: "agent", model: "jalza", label: "Agent", icon: "🤖" };
       }
     }
   } catch {

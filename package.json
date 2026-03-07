@@ -1,0 +1,12 @@
+{
+  "name": "jalza-e2e",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test e2e-jalza-test.spec.ts --project=chromium",
+    "test:e2e:headed": "playwright test e2e-jalza-test.spec.ts --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "typescript": "^5"
+  }
+}

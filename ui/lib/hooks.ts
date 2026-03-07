@@ -931,6 +931,65 @@ Odpovedz IBA JSON, nič iné.`;
           return;
         }
 
+        if (route.type === "agent") {
+          const agentMsg: ChatMessage = { role: "assistant", content: "🤖 **Agent spustený** — pracujem na úlohe krok po kroku…", route };
+          setMessages([...updated, agentMsg]);
+
+          try {
+            const res = await fetch("/api/agent-task", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt: content,
+                agent: activeAgent?.key || "",
+              }),
+            });
+            const data = await res.json();
+
+            let summary = "";
+            if (data.error) {
+              summary = `❌ Agent chyba: ${data.error}`;
+            } else {
+              summary = `🤖 **Agent dokončený** (${data.total_steps} krokov)\n\n`;
+              if (data.steps) {
+                for (const step of data.steps) {
+                  if (step.tool === "done") {
+                    continue;
+                  }
+                  summary += `**Krok ${step.step}:**`;
+                  if (step.thought) summary += ` _${step.thought.slice(0, 150)}_`;
+                  summary += "\n";
+                  if (step.tool) {
+                    summary += `> \`${step.tool}\``;
+                    if (step.input) summary += `: \`${step.input.slice(0, 100)}\``;
+                    summary += "\n";
+                  }
+                  if (step.result) {
+                    const res = step.result.length > 300 ? step.result.slice(0, 300) + "…" : step.result;
+                    summary += `> ${res}\n`;
+                  }
+                  summary += "\n";
+                }
+              }
+              if (data.final_answer) {
+                summary += `---\n\n**Výsledok:**\n${data.final_answer}`;
+              }
+            }
+
+            const resultMsg: ChatMessage = { role: "assistant", content: summary, route };
+            const finalMsgs = [...updated, resultMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+            trackUsage({ model: "jalza-agent", route: "agent", outputText: summary });
+          } catch {
+            const errMsg: ChatMessage = { role: "assistant", content: "❌ Agent task zlyhal. Skontroluj pripojenie k backendu.", route };
+            setMessages([...updated, errMsg]);
+          } finally {
+            setIsStreaming(false);
+          }
+          return;
+        }
+
         if (route.type === "research") {
           const researchMsg: ChatMessage = { role: "assistant", content: "Hľadám informácie na webe a ukladám do znalostnej databázy…", route };
           setMessages([...updated, researchMsg]);
