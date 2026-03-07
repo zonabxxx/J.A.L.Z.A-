@@ -1,0 +1,31 @@
+
+========== STEP 1 - LOGIN ==========
+SUCCESS: Logged in
+
+========== STEP 2 - EMAIL ==========
+Emails load: YES
+Count shown: 0
+Errors: YES
+FAILURE
+
+========== STEP 3 - CALENDAR ==========
+Calendar loads: YES
+Events/view: YES
+Errors: YES
+FAILURE
+
+========== STEP 4 - MCP ==========
+MCP loads: YES
+Integrations shown: YES
+SUCCESS
+
+========== STEP 5 - USAGE (Spotreba) ==========
+Usage loads: YES
+Stats shown: YES
+SUCCESS
+
+========== STEP 6 - DASHBOARD ==========
+Dashboard loads: YES
+Stats cards: YES
+AI summary: YES
+SUCCESS

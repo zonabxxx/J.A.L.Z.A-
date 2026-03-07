@@ -166,26 +166,27 @@ export default function Sidebar({
         <p className="text-xs text-zinc-500 mt-1">Lokálny AI asistent</p>
       </div>
 
-      <nav className="flex border-b border-zinc-800 text-sm">
+      <nav className="grid grid-cols-4 border-b border-zinc-800">
         {[
-          { id: "dashboard", label: "📊" },
-          { id: "chat", label: "Chat" },
-          { id: "email", label: "Email" },
-          { id: "calendar", label: "Kalendár" },
-          { id: "integrations", label: "MCP" },
-          { id: "usage", label: "Spotreba" },
-          { id: "tasks", label: "Úlohy" },
+          { id: "dashboard", label: "Prehľad", icon: "📊" },
+          { id: "chat", label: "Chat", icon: "💬" },
+          { id: "email", label: "Email", icon: "📧" },
+          { id: "calendar", label: "Kalendár", icon: "📅" },
+          { id: "integrations", label: "MCP", icon: "🔗" },
+          { id: "usage", label: "Spotreba", icon: "📈" },
+          { id: "tasks", label: "Úlohy", icon: "✅" },
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`flex-1 py-2.5 transition-colors ${
+            className={`flex flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${
               activeTab === tab.id
-                ? "text-blue-400 border-b-2 border-blue-400"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "text-blue-400 bg-blue-500/10"
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
             }`}
           >
-            {tab.label}
+            <span className="text-sm leading-none">{tab.icon}</span>
+            <span className="leading-none">{tab.label}</span>
           </button>
         ))}
       </nav>
