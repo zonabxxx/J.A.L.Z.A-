@@ -1070,6 +1070,91 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 logger.error(f"Agent run error: {e}")
                 self._send_json({"error": str(e)}, 500)
 
+        elif self.path == "/files":
+            body = self._read_body()
+            action = body.get("action", "list")
+            files_dir = os.path.join(BASE_DIR, "user_files")
+            os.makedirs(files_dir, exist_ok=True)
+
+            if action == "list":
+                folder = body.get("folder", "")
+                target = os.path.join(files_dir, folder) if folder else files_dir
+                if not os.path.isdir(target):
+                    self._send_json({"files": []})
+                    return
+                entries = []
+                for name in sorted(os.listdir(target)):
+                    full = os.path.join(target, name)
+                    is_dir = os.path.isdir(full)
+                    size = os.path.getsize(full) if not is_dir else 0
+                    mtime = os.path.getmtime(full)
+                    entries.append({
+                        "name": name,
+                        "type": "folder" if is_dir else "file",
+                        "size": size,
+                        "modified": _dt.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M"),
+                    })
+                self._send_json({"files": entries, "folder": folder})
+
+            elif action == "upload":
+                filename = body.get("filename", "")
+                folder = body.get("folder", "")
+                content_b64 = body.get("content_base64", "")
+                if not filename or not content_b64:
+                    self._send_json({"error": "filename and content_base64 required"}, 400)
+                    return
+                target_dir = os.path.join(files_dir, folder) if folder else files_dir
+                os.makedirs(target_dir, exist_ok=True)
+                safe_name = re.sub(r'[^\w\-_\. ]', '', filename)[:100]
+                target_path = os.path.join(target_dir, safe_name)
+                try:
+                    data = base64.b64decode(content_b64)
+                    with open(target_path, "wb") as f:
+                        f.write(data)
+                    self._send_json({"status": "uploaded", "filename": safe_name, "size": len(data)})
+                except Exception as e:
+                    self._send_json({"error": str(e)}, 500)
+
+            elif action == "delete":
+                filename = body.get("filename", "")
+                folder = body.get("folder", "")
+                if not filename:
+                    self._send_json({"error": "filename required"}, 400)
+                    return
+                target_dir = os.path.join(files_dir, folder) if folder else files_dir
+                target_path = os.path.join(target_dir, filename)
+                if os.path.exists(target_path) and os.path.isfile(target_path):
+                    os.remove(target_path)
+                    self._send_json({"status": "deleted"})
+                else:
+                    self._send_json({"error": "File not found"}, 404)
+
+            elif action == "create_folder":
+                folder_name = body.get("name", "")
+                parent = body.get("folder", "")
+                if not folder_name:
+                    self._send_json({"error": "name required"}, 400)
+                    return
+                target = os.path.join(files_dir, parent, folder_name) if parent else os.path.join(files_dir, folder_name)
+                os.makedirs(target, exist_ok=True)
+                self._send_json({"status": "created", "folder": folder_name})
+
+            elif action == "download":
+                filename = body.get("filename", "")
+                folder = body.get("folder", "")
+                target_dir = os.path.join(files_dir, folder) if folder else files_dir
+                target_path = os.path.join(target_dir, filename)
+                if os.path.isfile(target_path):
+                    with open(target_path, "rb") as f:
+                        data = f.read()
+                    content_b64 = base64.b64encode(data).decode()
+                    self._send_json({"filename": filename, "content_base64": content_b64, "size": len(data)})
+                else:
+                    self._send_json({"error": "File not found"}, 404)
+
+            else:
+                self._send_json({"error": "Unknown action"}, 400)
+
         elif self.path == "/push/subscribe":
             body = self._read_body()
             sub = body.get("subscription", {})
