@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getLocation, requestLocation, type UserLocation } from "@/lib/location";
+import { subscribeToPush, unsubscribeFromPush, isPushSupported, isPushSubscribed } from "@/lib/push-notifications";
 
 interface Settings {
   update_enabled: boolean;
@@ -17,6 +18,8 @@ export default function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
 
   const [features, setFeatures] = useState({
     webSearch: true,
@@ -32,6 +35,9 @@ export default function SettingsPanel() {
       .then((r) => r.json())
       .then(setSettings)
       .catch(() => {});
+
+    setPushSupported(isPushSupported());
+    isPushSubscribed().then(setPushEnabled);
 
     getLocation().then((loc) => {
       if (loc) {
@@ -154,9 +160,47 @@ export default function SettingsPanel() {
     },
   ];
 
+  const handlePushToggle = async () => {
+    if (pushEnabled) {
+      await unsubscribeFromPush();
+      setPushEnabled(false);
+    } else {
+      const ok = await subscribeToPush();
+      setPushEnabled(ok);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <h2 className="text-lg font-semibold">Nastavenia</h2>
+
+      {pushSupported && (
+        <section className="bg-zinc-900 rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-lg">🔔</span>
+              <div>
+                <div className="text-sm font-medium">Push notifikácie</div>
+                <div className="text-xs text-zinc-500">
+                  {pushEnabled ? "Aktívne — budeš dostávať upozornenia" : "Povoľ pre pripomienky a úlohy"}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handlePushToggle}
+              className={`w-11 h-6 rounded-full transition-colors relative ${
+                pushEnabled ? "bg-blue-600" : "bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                  pushEnabled ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="bg-zinc-900 rounded-xl p-5 space-y-1">
         <h3 className="font-medium text-sm text-zinc-400 uppercase tracking-wider mb-3">

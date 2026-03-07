@@ -1070,6 +1070,31 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 logger.error(f"Agent run error: {e}")
                 self._send_json({"error": str(e)}, 500)
 
+        elif self.path == "/push/subscribe":
+            body = self._read_body()
+            sub = body.get("subscription", {})
+            if sub:
+                cfg = load_config()
+                subs = cfg.get("push_subscriptions", [])
+                endpoints = [s.get("endpoint") for s in subs]
+                if sub.get("endpoint") not in endpoints:
+                    subs.append(sub)
+                    cfg["push_subscriptions"] = subs
+                    save_config(cfg)
+                self._send_json({"status": "subscribed"})
+            else:
+                self._send_json({"error": "No subscription"}, 400)
+
+        elif self.path == "/push/unsubscribe":
+            body = self._read_body()
+            endpoint = body.get("endpoint", "")
+            if endpoint:
+                cfg = load_config()
+                subs = cfg.get("push_subscriptions", [])
+                cfg["push_subscriptions"] = [s for s in subs if s.get("endpoint") != endpoint]
+                save_config(cfg)
+            self._send_json({"status": "unsubscribed"})
+
         elif self.path == "/facts":
             body = self._read_body()
             action = body.get("action", "list")
