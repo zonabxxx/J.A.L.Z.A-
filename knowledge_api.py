@@ -1198,6 +1198,92 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"error": "Unknown action"}, 400)
 
+        elif self.path == "/webhooks":
+            body = self._read_body()
+            action = body.get("action", "list")
+            cfg = load_config()
+            webhooks = cfg.get("webhooks", [])
+
+            if action == "list":
+                self._send_json({"webhooks": webhooks})
+
+            elif action == "create":
+                import uuid
+                wh = {
+                    "id": str(uuid.uuid4())[:8],
+                    "name": body.get("name", ""),
+                    "url": body.get("url", ""),
+                    "events": body.get("events", []),
+                    "secret": body.get("secret", ""),
+                    "enabled": True,
+                    "created_at": _dt.datetime.now().isoformat(),
+                }
+                webhooks.append(wh)
+                cfg["webhooks"] = webhooks
+                save_config(cfg)
+                self._send_json({"status": "created", "webhook": wh})
+
+            elif action == "delete":
+                wh_id = body.get("id", "")
+                cfg["webhooks"] = [w for w in webhooks if w.get("id") != wh_id]
+                save_config(cfg)
+                self._send_json({"status": "deleted"})
+
+            elif action == "toggle":
+                wh_id = body.get("id", "")
+                for w in webhooks:
+                    if w["id"] == wh_id:
+                        w["enabled"] = body.get("enabled", not w.get("enabled", True))
+                cfg["webhooks"] = webhooks
+                save_config(cfg)
+                self._send_json({"status": "updated"})
+
+            elif action == "test":
+                wh_id = body.get("id", "")
+                wh = next((w for w in webhooks if w.get("id") == wh_id), None)
+                if not wh:
+                    self._send_json({"error": "Webhook not found"}, 404)
+                    return
+                import requests as req
+                try:
+                    payload = {
+                        "event": "test",
+                        "source": "jalza",
+                        "message": "Test webhook from J.A.L.Z.A.",
+                        "timestamp": _dt.datetime.now().isoformat(),
+                    }
+                    headers = {"Content-Type": "application/json"}
+                    if wh.get("secret"):
+                        import hashlib
+                        sig = hashlib.sha256((wh["secret"] + json.dumps(payload)).encode()).hexdigest()
+                        headers["X-Webhook-Signature"] = sig
+                    r = req.post(wh["url"], json=payload, headers=headers, timeout=10)
+                    self._send_json({"status": "sent", "response_code": r.status_code})
+                except Exception as e:
+                    self._send_json({"error": str(e)}, 500)
+
+            else:
+                self._send_json({"error": "Unknown action"}, 400)
+
+        elif self.path == "/webhook/incoming":
+            body = self._read_body()
+            event = body.get("event", "unknown")
+            source = body.get("source", "unknown")
+            data = body.get("data", {})
+            message = body.get("message", "")
+            logger.info(f"Incoming webhook: event={event}, source={source}")
+            cfg = load_config()
+            wh_log = cfg.get("webhook_log", [])
+            wh_log.insert(0, {
+                "event": event,
+                "source": source,
+                "message": message[:500],
+                "received_at": _dt.datetime.now().isoformat(),
+            })
+            cfg["webhook_log"] = wh_log[:50]
+            save_config(cfg)
+            self._send_json({"status": "received"})
+
         elif self.path == "/contacts":
             body = self._read_body()
             action = body.get("action", "list")
