@@ -121,7 +121,10 @@ export async function POST(req: NextRequest) {
   const { messages, model, agent } = await req.json();
 
   const useModel = model || DEFAULT_MODEL;
-  let finalMessages = [...messages];
+  const hasSystem = messages.some((m: { role: string }) => m.role === "system");
+  let finalMessages = hasSystem
+    ? [...messages]
+    : [{ role: "system", content: "Použi svoj systémový prompt. Si J.A.L.Z.A." }, ...messages];
 
   if (agent) {
     try {
