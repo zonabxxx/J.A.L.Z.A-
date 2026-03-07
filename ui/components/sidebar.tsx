@@ -166,29 +166,31 @@ export default function Sidebar({
         <p className="text-xs text-zinc-500 mt-1">Lokálny AI asistent</p>
       </div>
 
-      <nav className="grid grid-cols-4 border-b border-zinc-800">
-        {[
-          { id: "dashboard", label: "Prehľad", icon: "📊" },
-          { id: "chat", label: "Chat", icon: "💬" },
-          { id: "email", label: "Email", icon: "📧" },
-          { id: "calendar", label: "Kalendár", icon: "📅" },
-          { id: "integrations", label: "MCP", icon: "🔗" },
-          { id: "usage", label: "Spotreba", icon: "📈" },
-          { id: "tasks", label: "Úlohy", icon: "✅" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`flex flex-col items-center gap-0.5 py-2 text-[10px] transition-colors ${
-              activeTab === tab.id
-                ? "text-blue-400 bg-blue-500/10"
-                : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
-            }`}
-          >
-            <span className="text-sm leading-none">{tab.icon}</span>
-            <span className="leading-none">{tab.label}</span>
-          </button>
-        ))}
+      <nav className="border-b border-zinc-800 px-2 py-2">
+        <div className="grid grid-cols-4 gap-1">
+          {[
+            { id: "dashboard", label: "Prehľad", icon: "📊" },
+            { id: "chat", label: "Chat", icon: "💬" },
+            { id: "email", label: "Email", icon: "📧" },
+            { id: "calendar", label: "Kalendár", icon: "📅" },
+            { id: "integrations", label: "MCP", icon: "🔗" },
+            { id: "usage", label: "Spotreba", icon: "📈" },
+            { id: "tasks", label: "Úlohy", icon: "✅" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[10px] font-medium transition-colors ${
+                activeTab === tab.id
+                  ? "text-blue-400 bg-blue-500/15 ring-1 ring-blue-500/30"
+                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+              }`}
+            >
+              <span className="text-base leading-none">{tab.icon}</span>
+              <span className="leading-tight">{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </nav>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
