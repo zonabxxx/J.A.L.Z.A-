@@ -496,7 +496,10 @@ export function useChat(activeAgent: Agent | null) {
     const loadingMsg: ChatMessage = { role: "assistant", content: "", route };
     setMessages([...updatedMessages, loadingMsg]);
 
-    // Use Gemini to classify the calendar intent
+    const now = new Date();
+    const dayNames = ["nedeľa","pondelok","utorok","streda","štvrtok","piatok","sobota"];
+    const todayName = dayNames[now.getDay()];
+
     const calPrompt = `Analyzuj túto správu o kalendári a vráť JSON:
 - "list" — zobraziť udalosti (dnes, tento týždeň, dátum)
 - "create" — vytvoriť novú udalosť
@@ -504,11 +507,19 @@ export function useChat(activeAgent: Agent | null) {
 - "search" — hľadať udalosť
 
 Pre "list": {"action":"list","period":"today"|"week"|"month"}
-Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"..."}
+Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"...","body":"...","attendees":["email1",...]}
 Pre "delete": {"action":"delete","number":1}
 Pre "search": {"action":"search","query":"..."}
 
-Dnešný dátum: ${new Date().toISOString().slice(0, 10)}
+DÔLEŽITÉ:
+- Dnešný dátum: ${now.toISOString().slice(0, 10)} (${todayName})
+- Ak používateľ povie "pondelok", mysli NAJBLIŽŠÍ pondelok.
+- Ak spomína firmu alebo adresu, daj ju do "location".
+- Ak spomína osoby, daj ich mená do "subject" (napr. "Stretnutie s Michalom a Petrom").
+- Ak spomína popis alebo poznámku, daj to do "body".
+- "attendees" nechaj prázdne ak nie sú emaily.
+- Ak nespomína čas, použi 09:00 ako default.
+
 Správa: "${userText}"
 Odpovedz IBA JSON, nič iné.`;
 
@@ -535,10 +546,27 @@ Odpovedz IBA JSON, nič iné.`;
       const time = (intent.time as string) || "09:00";
       const durationH = (intent.duration_hours as number) || 1;
       const location = (intent.location as string) || "";
+      const body = (intent.body as string) || "";
+      const attendees = (intent.attendees as string[]) || [];
 
       const start = `${date}T${time}:00`;
       const endDate = new Date(new Date(start).getTime() + durationH * 3600000);
       const end = endDate.toISOString().slice(0, 19);
+      const endTime = `${String(endDate.getHours()).padStart(2,"0")}:${String(endDate.getMinutes()).padStart(2,"0")}`;
+
+      const dayOfWeek = dayNames[new Date(date).getDay()] || "";
+      const summary = [
+        `**Vytváram udalosť v kalendári:**\n`,
+        `📅 **${subject}**`,
+        `🗓 ${date} (${dayOfWeek})`,
+        `🕐 ${time} – ${endTime} (${durationH}h)`,
+        location ? `📍 ${location}` : null,
+        body ? `📝 ${body}` : null,
+        attendees.length > 0 ? `👥 ${attendees.join(", ")}` : null,
+        `\n⏳ Ukladám do kalendára...`,
+      ].filter(Boolean).join("\n");
+
+      calendarReply(summary, route, updatedMessages, convId);
 
       try {
         const res = await fetch("/api/calendar", {
@@ -550,18 +578,25 @@ Odpovedz IBA JSON, nič iné.`;
             start,
             end,
             location,
+            body,
+            attendees,
             account: "juraj",
           }),
         });
         const data = await res.json();
         if (data.error) {
-          calendarReply(`Chyba: ${data.error}`, route, updatedMessages, convId);
+          calendarReply(`**Chyba pri vytváraní:**\n\n${data.error}`, route, updatedMessages, convId);
         } else {
-          calendarReply(
-            `✅ Udalosť vytvorená!\n\n📅 ${subject}\n🕐 ${date} ${time} (${durationH}h)${location ? `\n📍 ${location}` : ""}`,
-            route, updatedMessages, convId,
-            [data]
-          );
+          const successMsg = [
+            `✅ **Udalosť vytvorená!**\n`,
+            `📅 **${subject}**`,
+            `🗓 ${date} (${dayOfWeek})`,
+            `🕐 ${time} – ${endTime} (${durationH}h)`,
+            location ? `📍 ${location}` : null,
+            body ? `📝 ${body}` : null,
+            attendees.length > 0 ? `👥 ${attendees.join(", ")}` : null,
+          ].filter(Boolean).join("\n");
+          calendarReply(successMsg, route, updatedMessages, convId, [data]);
         }
       } catch {
         calendarReply("Nepodarilo sa vytvoriť udalosť.", route, updatedMessages, convId);
