@@ -9,6 +9,7 @@ KATEGÓRIE:
 - "email" — používateľ chce pracovať s emailami (poslať, čítať, odpovedať, hľadať, vymazať, spam, pošta, mail)
 - "image" — používateľ chce VYGENEROVAŤ/VYTVORIŤ obrázok, kresbu, ilustráciu, logo, design, grafiku (nakresli, vygeneruj obrázok, vytvor obrázok, urob mi obrázok, nakresli mi, namaľuj, design, logo, ilustrácia)
 - "calendar" — používateľ chce pracovať s KALENDÁROM (stretnutie, schôdzka, meeting, udalosť, čo mám dnes, program, vytvor stretnutie, zruš meeting, presuň, kalendár, kedy mám, diary, agenda, termín)
+- "research" — používateľ chce aby AI VYHĽADAL informácie na webe a ULOŽIL ich do znalostnej databázy (nájdi info a ulož, urob research, preskúmaj firmu a pridaj do databázy, nauč sa o..., zisti všetko o... a zapamätaj si, pridaj zdroje o...)
 - "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom)
 
 PRAVIDLÁ:
@@ -18,9 +19,10 @@ PRAVIDLÁ:
 - "pošli mail", "maily", "email", "napíš mail", "odpoveď na mail" → "email"
 - "nakresli", "vygeneruj obrázok", "vytvor obrázok", "nakresli mi", "namaľuj", "urob logo" → "image"
 - "čo mám dnes", "aký mám program", "stretnutie", "meeting", "schôdzka", "kalendár", "vytvor udalosť", "kedy mám" → "calendar"
+- "nájdi info a ulož", "urob research", "preskúmaj a pridaj", "nauč sa o", "zisti a zapamätaj", "pridaj do databázy" → "research"
 - Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
-Odpovedz IBA jedným slovom: search, email, image, calendar, alebo chat`;
+Odpovedz IBA jedným slovom: search, email, image, calendar, research, alebo chat`;
 
 async function classifyWithGemini(message: string): Promise<string | null> {
   if (!GEMINI_API_KEY) return null;
@@ -77,6 +79,7 @@ function parseRoute(text: string | null): string {
   if (text.includes("email")) return "email";
   if (text.includes("image")) return "image";
   if (text.includes("calendar")) return "calendar";
+  if (text.includes("research")) return "research";
   return "chat";
 }
 

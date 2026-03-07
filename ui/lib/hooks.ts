@@ -931,6 +931,53 @@ Odpovedz IBA JSON, nič iné.`;
           return;
         }
 
+        if (route.type === "research") {
+          const researchMsg: ChatMessage = { role: "assistant", content: "Hľadám informácie na webe a ukladám do znalostnej databázy…", route };
+          setMessages([...updated, researchMsg]);
+
+          try {
+            const agentKey = activeAgent?.key || "adsun_dopyty";
+            const res = await fetch("/api/research", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query: content, agent: agentKey }),
+            });
+            const data = await res.json();
+
+            let summary = "";
+            if (data.error && !data.results?.length) {
+              summary = `Nepodarilo sa: ${data.error}`;
+            } else {
+              summary = `**Research dokončený** (agent: ${data.agent})\n\n`;
+              summary += `Nájdených URL: ${data.total_urls} | Uložených: ${data.saved} | Chyby: ${data.failed}\n\n`;
+              if (data.results) {
+                for (const r of data.results) {
+                  if (r.status === "ok") {
+                    summary += `- **${r.title}** — ${r.url}\n`;
+                  } else {
+                    summary += `- ~~${r.url}~~ — ${r.error}\n`;
+                  }
+                }
+              }
+              if (data.saved > 0) {
+                summary += `\nDáta sú uložené. Teraz sa ma môžeš pýtať na tieto informácie.`;
+              }
+            }
+
+            const resultMsg: ChatMessage = { role: "assistant", content: summary, route };
+            const finalMsgs = [...updated, resultMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+            trackUsage({ model: "gemini-research", route: "research", outputText: summary });
+          } catch {
+            const errMsg: ChatMessage = { role: "assistant", content: "Chyba pri research. Skontroluj pripojenie.", route };
+            setMessages([...updated, errMsg]);
+          } finally {
+            setIsStreaming(false);
+          }
+          return;
+        }
+
         if (route.type === "image") {
           const assistantMsg: ChatMessage = { role: "assistant", content: lastImage ? "Upravujem obrázok…" : "", route };
           const withAssistant = [...updated, assistantMsg];
