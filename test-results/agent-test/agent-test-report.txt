@@ -1,0 +1,18 @@
+=== STEP 1 - LOGIN ===
+SUCCESS: Logged in or already in chat
+
+=== STEP 2 - AGENT TASK ===
+Duration: 10s
+🤖 Agent badge in response: YES
+"Agent spustený" shown: YES
+"Agent dokončený" shown: NO
+J.A.L.Z.A. route (not Agent): NO
+Step-by-step (Krok 1, 2...): NO
+Tool usage (list_files, shell...): NO
+Final result/report: YES
+
+=== STEP 3 - VERIFY AGENT STEPS ===
+  Agent dokončený or Agent spustený: ✓
+  Step-by-step (Krok 1, 2...): ✗
+  Tool usage (list_files, shell...):: ✗
+  Final result/report: ✓

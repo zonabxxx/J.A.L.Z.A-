@@ -942,7 +942,14 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             tasks = cfg.get("scheduled_tasks_v2", [])
 
             if action == "list":
-                self._send_json({"tasks": tasks})
+                self._send_json({"tasks": tasks, "scheduler_active": True})
+
+            elif action == "results":
+                try:
+                    results = _get_task_results(body.get("limit", 20))
+                    self._send_json({"results": results})
+                except Exception as e:
+                    self._send_json({"error": str(e)}, 500)
 
             elif action == "create":
                 import uuid
@@ -1012,8 +1019,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     cfg["scheduled_tasks_v2"] = tasks
                     save_config(cfg)
 
+                    _init_task_results_db()
+                    _save_task_result(task["id"], task.get("name", ""), result)
                     self._send_json({"status": "completed", "result": result[:500]})
                 except Exception as e:
+                    _init_task_results_db()
+                    _save_task_result(task_id, task.get("name", ""), str(e), "error")
                     self._send_json({"error": str(e)}, 500)
 
             else:
@@ -1551,8 +1562,137 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
+# ── Task Scheduler ──────────────────────────────────────────────────
+import threading
+
+SCHEDULE_MAP = {
+    "hourly": lambda now: True,
+    "daily_morning": lambda now: now.hour == 7 and now.minute < 2,
+    "daily_evening": lambda now: now.hour == 19 and now.minute < 2,
+    "weekly": lambda now: now.weekday() == 0 and now.hour == 8 and now.minute < 2,
+    "monthly": lambda now: now.day == 1 and now.hour == 8 and now.minute < 2,
+}
+
+TASK_RESULTS_DB = os.path.join(BASE_DIR, "task_results.db")
+
+def _init_task_results_db():
+    conn = sqlite3.connect(TASK_RESULTS_DB)
+    conn.execute("""CREATE TABLE IF NOT EXISTS task_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT, task_name TEXT, result TEXT,
+        status TEXT DEFAULT 'completed',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+    )""")
+    conn.commit()
+    conn.close()
+
+def _save_task_result(task_id, task_name, result, status="completed"):
+    conn = sqlite3.connect(TASK_RESULTS_DB)
+    conn.execute(
+        "INSERT INTO task_results (task_id, task_name, result, status) VALUES (?, ?, ?, ?)",
+        (task_id, task_name, result[:5000], status)
+    )
+    conn.execute("DELETE FROM task_results WHERE id NOT IN (SELECT id FROM task_results ORDER BY id DESC LIMIT 100)")
+    conn.commit()
+    conn.close()
+
+def _get_task_results(limit=20):
+    conn = sqlite3.connect(TASK_RESULTS_DB)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM task_results ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def _run_scheduled_task(task):
+    import requests as req
+    try:
+        messages = [{"role": "user", "content": task["prompt"]}]
+        agent_key = task.get("agent", "")
+        if agent_key and agent_key in AGENTS:
+            agent_cfg = AGENTS[agent_key]
+            kb = KnowledgeBase(agent_cfg["name"])
+            results = kb.search(task["prompt"], top_k=3)
+            context = "\n".join(f"Zdroj: {r['title']}\n{r['content']}" for r in results)
+            messages = [
+                {"role": "system", "content": agent_cfg.get("system_prompt", "")},
+                {"role": "user", "content": f"{context}\n\nÚLOHA: {task['prompt']}"},
+            ]
+
+        r = req.post(
+            "http://localhost:11434/api/chat",
+            json={"model": "jalza", "messages": messages, "stream": False},
+            timeout=300,
+        )
+        result = r.json().get("message", {}).get("content", "Chyba")
+        _save_task_result(task["id"], task.get("name", ""), result)
+
+        cfg = load_config()
+        for t in cfg.get("scheduled_tasks_v2", []):
+            if t["id"] == task["id"]:
+                t["last_run"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+                break
+        save_config(cfg)
+
+        logger.info(f"Task '{task.get('name')}' completed: {result[:100]}")
+    except Exception as e:
+        _save_task_result(task["id"], task.get("name", ""), str(e), "error")
+        logger.error(f"Task '{task.get('name')}' failed: {e}")
+
+
+def _scheduler_loop():
+    _init_task_results_db()
+    ran_this_hour = set()
+    logger.info("Scheduler thread started")
+
+    while True:
+        try:
+            now = _dt.datetime.now()
+            hour_key = f"{now.year}-{now.month}-{now.day}-{now.hour}"
+            cfg = load_config()
+
+            for task in cfg.get("scheduled_tasks_v2", []):
+                if not task.get("enabled", False):
+                    continue
+                schedule = task.get("schedule", "daily_morning")
+                task_hour_key = f"{hour_key}-{task['id']}"
+                if task_hour_key in ran_this_hour:
+                    continue
+
+                should_run = False
+                if schedule in SCHEDULE_MAP:
+                    should_run = SCHEDULE_MAP[schedule](now)
+                elif schedule == "custom":
+                    should_run = False
+
+                if schedule == "hourly":
+                    if now.minute >= 2:
+                        continue
+
+                if should_run:
+                    ran_this_hour.add(task_hour_key)
+                    logger.info(f"Scheduler: running task '{task.get('name')}' (schedule={schedule})")
+                    thread = threading.Thread(target=_run_scheduled_task, args=(task,), daemon=True)
+                    thread.start()
+
+            old_keys = [k for k in ran_this_hour if not k.startswith(hour_key)]
+            for k in old_keys:
+                ran_this_hour.discard(k)
+
+        except Exception as e:
+            logger.error(f"Scheduler error: {e}")
+
+        import time
+        time.sleep(30)
+
+
 if __name__ == "__main__":
+    scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True)
+    scheduler_thread.start()
+
     server = ThreadedHTTPServer(("0.0.0.0", PORT), KnowledgeHandler)
     print(f"Knowledge API beží na porte {PORT} (threaded)")
     print(f"Endpointy: GET /agents, POST /ask, POST /context, POST /search, POST /detect")
+    print(f"Scheduler: aktívny (kontroluje úlohy každých 30s)")
     server.serve_forever()

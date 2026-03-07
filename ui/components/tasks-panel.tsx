@@ -12,6 +12,15 @@ interface ScheduledTask {
   notify: boolean;
 }
 
+interface TaskResult {
+  id: number;
+  task_id: string;
+  task_name: string;
+  result: string;
+  status: string;
+  created_at: string;
+}
+
 const SCHEDULE_OPTIONS = [
   { value: "hourly", label: "Každú hodinu" },
   { value: "daily_morning", label: "Denne ráno (7:00)" },
@@ -29,8 +38,12 @@ interface Props {
 export default function TasksPanel({ onMenuToggle, onBack }: Props) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [agents, setAgents] = useState<Record<string, { name: string }>>({});
+  const [results, setResults] = useState<TaskResult[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [schedulerActive, setSchedulerActive] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [runningId, setRunningId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({
     name: "",
     prompt: "",
@@ -48,7 +61,22 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
       const tasksData = await tasksRes.json();
       const agentsData = await agentsRes.json();
       if (tasksData.tasks) setTasks(tasksData.tasks);
+      if (tasksData.scheduler_active) setSchedulerActive(true);
       setAgents(agentsData);
+    } catch {
+      // error
+    }
+  };
+
+  const loadResults = async () => {
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "results", limit: 10 }),
+      });
+      const data = await res.json();
+      if (data.results) setResults(data.results);
     } catch {
       // error
     }
@@ -94,12 +122,18 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
   };
 
   const runNow = async (id: string) => {
-    await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "run", id }),
-    });
-    load();
+    setRunningId(id);
+    try {
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run", id }),
+      });
+      await load();
+      await loadResults();
+    } finally {
+      setRunningId(null);
+    }
   };
 
   return (
@@ -122,15 +156,29 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
           )}
           <div>
             <h2 className="font-semibold text-sm">Plánované úlohy</h2>
-            <p className="text-[10px] text-zinc-500">Automatické úlohy agenta</p>
+            <p className="text-[10px] text-zinc-500">
+              {schedulerActive ? (
+                <span className="text-green-400">● Scheduler aktívny</span>
+              ) : (
+                <span className="text-red-400">● Scheduler neaktívny</span>
+              )}
+            </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-        >
-          + Nová
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowResults(!showResults); if (!showResults) loadResults(); }}
+            className="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+          >
+            {showResults ? "Skryť históriu" : "História"}
+          </button>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            + Nová
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
@@ -269,10 +317,11 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
               <div className="flex items-center gap-1 ml-3">
                 <button
                   onClick={() => runNow(task.id)}
-                  className="text-xs px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors"
+                  disabled={runningId === task.id}
+                  className="text-xs px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors disabled:opacity-50"
                   title="Spustiť teraz"
                 >
-                  ▶
+                  {runningId === task.id ? "⏳" : "▶"}
                 </button>
                 <button
                   onClick={() => toggleTask(task.id, !task.enabled)}
@@ -291,6 +340,36 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
           </div>
         ))}
       </div>
+
+      {showResults && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            História výsledkov
+          </h3>
+          {results.length === 0 ? (
+            <p className="text-sm text-zinc-600 text-center py-4">Žiadne výsledky</p>
+          ) : (
+            results.map((r) => (
+              <div key={r.id} className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm">{r.task_name || r.task_id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      r.status === "completed" ? "bg-green-600/20 text-green-400" : "bg-red-600/20 text-red-400"
+                    }`}>
+                      {r.status === "completed" ? "OK" : "Chyba"}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">{r.created_at}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-zinc-400 bg-zinc-800 rounded-lg px-3 py-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                  {r.result}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
         <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
