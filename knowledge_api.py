@@ -1155,6 +1155,85 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"error": "Unknown action"}, 400)
 
+        elif self.path == "/contacts":
+            body = self._read_body()
+            action = body.get("action", "list")
+            contacts_db = os.path.join(BASE_DIR, "contacts.db")
+            conn = sqlite3.connect(contacts_db)
+            conn.execute("""CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                company TEXT DEFAULT '',
+                role TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+
+            if action == "list":
+                rows = conn.execute("SELECT * FROM contacts ORDER BY name").fetchall()
+                cols = ["id", "name", "email", "phone", "company", "role", "notes", "created_at"]
+                contacts = [dict(zip(cols, r)) for r in rows]
+                conn.close()
+                self._send_json({"contacts": contacts})
+
+            elif action == "add":
+                name = body.get("name", "").strip()
+                if not name:
+                    conn.close()
+                    self._send_json({"error": "name required"}, 400)
+                    return
+                conn.execute(
+                    "INSERT INTO contacts (name, email, phone, company, role, notes) VALUES (?, ?, ?, ?, ?, ?)",
+                    (name, body.get("email", ""), body.get("phone", ""), body.get("company", ""), body.get("role", ""), body.get("notes", ""))
+                )
+                conn.commit()
+                conn.close()
+                self._send_json({"status": "added", "name": name})
+
+            elif action == "update":
+                cid = body.get("id")
+                if not cid:
+                    conn.close()
+                    self._send_json({"error": "id required"}, 400)
+                    return
+                fields = []
+                values = []
+                for f in ["name", "email", "phone", "company", "role", "notes"]:
+                    if f in body:
+                        fields.append(f"{f} = ?")
+                        values.append(body[f])
+                if fields:
+                    values.append(cid)
+                    conn.execute(f"UPDATE contacts SET {', '.join(fields)} WHERE id = ?", values)
+                    conn.commit()
+                conn.close()
+                self._send_json({"status": "updated"})
+
+            elif action == "delete":
+                cid = body.get("id")
+                if cid:
+                    conn.execute("DELETE FROM contacts WHERE id = ?", (cid,))
+                    conn.commit()
+                conn.close()
+                self._send_json({"status": "deleted"})
+
+            elif action == "search":
+                q = body.get("query", "")
+                rows = conn.execute(
+                    "SELECT * FROM contacts WHERE name LIKE ? OR email LIKE ? OR company LIKE ? ORDER BY name LIMIT 20",
+                    (f"%{q}%", f"%{q}%", f"%{q}%")
+                ).fetchall()
+                cols = ["id", "name", "email", "phone", "company", "role", "notes", "created_at"]
+                contacts = [dict(zip(cols, r)) for r in rows]
+                conn.close()
+                self._send_json({"contacts": contacts})
+
+            else:
+                conn.close()
+                self._send_json({"error": "Unknown action"}, 400)
+
         elif self.path == "/push/subscribe":
             body = self._read_body()
             sub = body.get("subscription", {})
