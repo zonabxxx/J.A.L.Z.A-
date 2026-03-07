@@ -36,6 +36,8 @@ export default function Home() {
     setSelectedModel,
     readEmailById,
     stopGeneration,
+    confirmCalendarEvent,
+    cancelCalendarEvent,
   } = useChat(activeAgent);
 
   const [agents, setAgents] = useState<Record<string, Agent>>({});
@@ -179,6 +181,8 @@ export default function Home() {
             onModelChange={setSelectedModel}
             onReadEmail={readEmailById}
             onStop={stopGeneration}
+            onConfirmCalendar={confirmCalendarEvent}
+            onCancelCalendar={cancelCalendarEvent}
           />
         )}
         {activeTab === "email" && <EmailPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}

@@ -72,6 +72,18 @@ export interface CalendarEventData {
   web_link?: string;
 }
 
+export interface PendingCalendarEvent {
+  subject: string;
+  date: string;
+  time: string;
+  endTime: string;
+  durationH: number;
+  location: string;
+  body: string;
+  attendees: string[];
+  dayName: string;
+}
+
 export interface ChatMessage extends Message {
   route?: RouteResult;
   emails?: EmailData[];
@@ -79,6 +91,7 @@ export interface ChatMessage extends Message {
   generatedImage?: string;
   uploadedImage?: string;
   calendarEvents?: CalendarEventData[];
+  pendingCalendarEvent?: PendingCalendarEvent;
 }
 
 export function useChat(activeAgent: Agent | null) {
@@ -546,61 +559,28 @@ Odpovedz IBA JSON, nič iné.`;
       const time = (intent.time as string) || "09:00";
       const durationH = (intent.duration_hours as number) || 1;
       const location = (intent.location as string) || "";
-      const body = (intent.body as string) || "";
+      const bodyText = (intent.body as string) || "";
       const attendees = (intent.attendees as string[]) || [];
 
-      const start = `${date}T${time}:00`;
-      const endDate = new Date(new Date(start).getTime() + durationH * 3600000);
-      const end = endDate.toISOString().slice(0, 19);
+      const endDate = new Date(new Date(`${date}T${time}:00`).getTime() + durationH * 3600000);
       const endTime = `${String(endDate.getHours()).padStart(2,"0")}:${String(endDate.getMinutes()).padStart(2,"0")}`;
-
       const dayOfWeek = dayNames[new Date(date).getDay()] || "";
-      const summary = [
-        `**Vytváram udalosť v kalendári:**\n`,
-        `📅 **${subject}**`,
-        `🗓 ${date} (${dayOfWeek})`,
-        `🕐 ${time} – ${endTime} (${durationH}h)`,
-        location ? `📍 ${location}` : null,
-        body ? `📝 ${body}` : null,
-        attendees.length > 0 ? `👥 ${attendees.join(", ")}` : null,
-        `\n⏳ Ukladám do kalendára...`,
-      ].filter(Boolean).join("\n");
 
-      calendarReply(summary, route, updatedMessages, convId);
+      const pending: PendingCalendarEvent = {
+        subject, date, time, endTime, durationH,
+        location, body: bodyText, attendees, dayName: dayOfWeek,
+      };
 
-      try {
-        const res = await fetch("/api/calendar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "create",
-            subject,
-            start,
-            end,
-            location,
-            body,
-            attendees,
-            account: "juraj",
-          }),
-        });
-        const data = await res.json();
-        if (data.error) {
-          calendarReply(`**Chyba pri vytváraní:**\n\n${data.error}`, route, updatedMessages, convId);
-        } else {
-          const successMsg = [
-            `✅ **Udalosť vytvorená!**\n`,
-            `📅 **${subject}**`,
-            `🗓 ${date} (${dayOfWeek})`,
-            `🕐 ${time} – ${endTime} (${durationH}h)`,
-            location ? `📍 ${location}` : null,
-            body ? `📝 ${body}` : null,
-            attendees.length > 0 ? `👥 ${attendees.join(", ")}` : null,
-          ].filter(Boolean).join("\n");
-          calendarReply(successMsg, route, updatedMessages, convId, [data]);
-        }
-      } catch {
-        calendarReply("Nepodarilo sa vytvoriť udalosť.", route, updatedMessages, convId);
-      }
+      const confirmMsg: ChatMessage = {
+        role: "assistant",
+        content: "Skontroluj detaily a potvrď vytvorenie:",
+        route,
+        pendingCalendarEvent: pending,
+      };
+      const finalMsgs = [...updatedMessages, confirmMsg];
+      setMessages(finalMsgs);
+      debouncedSave(finalMsgs, convId);
+      setIsStreaming(false);
       return;
     }
 
@@ -1171,6 +1151,79 @@ Odpovedz IBA JSON, nič iné.`;
     setIsStreaming(false);
   }, []);
 
+  const confirmCalendarEvent = useCallback(
+    async (event: PendingCalendarEvent) => {
+      const route: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+
+      const msgIdx = messages.findIndex(m => m.pendingCalendarEvent);
+      if (msgIdx === -1) return;
+
+      const updated = messages.map((m, i) =>
+        i === msgIdx ? { ...m, pendingCalendarEvent: undefined, content: "⏳ Vytvárám udalosť..." } : m
+      );
+      setMessages(updated);
+      setIsStreaming(true);
+
+      const start = `${event.date}T${event.time}:00`;
+      const endDate = new Date(new Date(start).getTime() + event.durationH * 3600000);
+      const end = endDate.toISOString().slice(0, 19);
+
+      try {
+        const res = await fetch("/api/calendar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create",
+            subject: event.subject,
+            start,
+            end,
+            location: event.location,
+            body: event.body,
+            attendees: event.attendees,
+            account: "juraj",
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          const errMsgs = updated.map((m, i) =>
+            i === msgIdx ? { ...m, content: `**Chyba:** ${data.error}` } : m
+          );
+          setMessages(errMsgs);
+        } else {
+          const successContent = [
+            `✅ **Udalosť vytvorená!**\n`,
+            `📅 **${event.subject}**`,
+            `🗓 ${event.date} (${event.dayName})`,
+            `🕐 ${event.time} – ${event.endTime} (${event.durationH}h)`,
+            event.location ? `📍 ${event.location}` : null,
+            event.body ? `📝 ${event.body}` : null,
+          ].filter(Boolean).join("\n");
+
+          const successMsgs: ChatMessage[] = updated.map((m, i) =>
+            i === msgIdx ? { ...m, content: successContent, route, calendarEvents: [data] } : m
+          );
+          setMessages(successMsgs);
+          debouncedSave(successMsgs, conversationId);
+        }
+      } catch {
+        const errMsgs = updated.map((m, i) =>
+          i === msgIdx ? { ...m, content: "Nepodarilo sa vytvoriť udalosť." } : m
+        );
+        setMessages(errMsgs);
+      } finally {
+        setIsStreaming(false);
+      }
+    },
+    [messages, conversationId, debouncedSave]
+  );
+
+  const cancelCalendarEvent = useCallback(() => {
+    const updated = messages.map(m =>
+      m.pendingCalendarEvent ? { ...m, pendingCalendarEvent: undefined, content: "❌ Vytvorenie zrušené." } : m
+    );
+    setMessages(updated);
+  }, [messages]);
+
   return {
     messages,
     isStreaming,
@@ -1184,5 +1237,7 @@ Odpovedz IBA JSON, nič iné.`;
     setSelectedModel,
     readEmailById,
     stopGeneration,
+    confirmCalendarEvent,
+    cancelCalendarEvent,
   };
 }

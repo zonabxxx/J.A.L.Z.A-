@@ -10,6 +10,8 @@ import VoiceButton from "./voice-button";
 import SpeakButton from "./speak-button";
 import EmailCards from "./email-cards";
 import CalendarCards from "./calendar-cards";
+import CalendarConfirmCard from "./calendar-confirm-card";
+import type { PendingCalendarEvent } from "@/lib/hooks";
 
 interface Props {
   messages: ChatMessage[];
@@ -24,6 +26,8 @@ interface Props {
   onModelChange: (model: ModelOption) => void;
   onReadEmail?: (emailId: string, mailbox: string) => void;
   onStop?: () => void;
+  onConfirmCalendar?: (event: PendingCalendarEvent) => void;
+  onCancelCalendar?: () => void;
 }
 
 function formatEmailBody(text: string): string {
@@ -76,6 +80,8 @@ export default function Chat({
   onModelChange,
   onReadEmail,
   onStop,
+  onConfirmCalendar,
+  onCancelCalendar,
 }: Props) {
   const [input, setInput] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -310,7 +316,21 @@ export default function Chat({
                   {msg.content && features.voiceOutput && <SpeakButton text={msg.content} />}
                 </div>
               )}
-              {msg.calendarEvents && msg.calendarEvents.length > 0 ? (
+              {msg.pendingCalendarEvent ? (
+                <div className="space-y-2">
+                  {msg.content && (
+                    <div className="rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed bg-zinc-800 text-zinc-200">
+                      {msg.content}
+                    </div>
+                  )}
+                  <CalendarConfirmCard
+                    event={msg.pendingCalendarEvent}
+                    onConfirm={(ev) => onConfirmCalendar?.(ev)}
+                    onCancel={() => onCancelCalendar?.()}
+                    disabled={isStreaming}
+                  />
+                </div>
+              ) : msg.calendarEvents && msg.calendarEvents.length > 0 ? (
                 <div className="rounded-2xl px-3 md:px-4 py-3 bg-zinc-800/50 text-zinc-200 border border-zinc-700/50 space-y-2">
                   {msg.content && (
                     <div className="text-xs text-zinc-400 font-medium">{msg.content}</div>
