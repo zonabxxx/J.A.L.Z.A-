@@ -168,6 +168,7 @@ export default function Sidebar({
 
       <nav className="flex border-b border-zinc-800 text-sm">
         {[
+          { id: "dashboard", label: "📊" },
           { id: "chat", label: "Chat" },
           { id: "email", label: "Email" },
           { id: "calendar", label: "Kalendár" },

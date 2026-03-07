@@ -7,6 +7,7 @@ import CalendarPanel from "@/components/calendar-panel";
 import IntegrationsPanel from "@/components/integrations-panel";
 import TasksPanel from "@/components/tasks-panel";
 import UsagePanel from "@/components/usage-panel";
+import DashboardPanel from "@/components/dashboard-panel";
 import SettingsModal from "@/components/settings-modal";
 import LoginScreen from "@/components/login-screen";
 import { useChat } from "@/lib/hooks";
@@ -191,6 +192,7 @@ export default function Home() {
         {activeTab === "integrations" && <IntegrationsPanel health={health} onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "usage" && <UsagePanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "tasks" && <TasksPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
+        {activeTab === "dashboard" && <DashboardPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} onNavigate={(tab) => setActiveTab(tab)} />}
       </main>
 
       <SettingsModal
