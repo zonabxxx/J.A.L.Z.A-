@@ -40,8 +40,8 @@ Vráť JSON pole URL adries (max 10). IBA JSON, žiadny text:
       .join("") || "";
 
   const urlRegex = /https?:\/\/[^\s"',\]]+/g;
-  const urls = text.match(urlRegex) || [];
-  return [...new Set(urls)].slice(0, 10);
+  const urls: string[] = text.match(urlRegex) || [];
+  return Array.from(new Set(urls)).slice(0, 10);
 }
 
 export async function POST(req: NextRequest) {
