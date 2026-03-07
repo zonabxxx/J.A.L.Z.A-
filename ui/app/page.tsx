@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import Sidebar from "@/components/sidebar";
 import Chat from "@/components/chat";
 import EmailPanel from "@/components/email-panel";
+import CalendarPanel from "@/components/calendar-panel";
 import IntegrationsPanel from "@/components/integrations-panel";
 import TasksPanel from "@/components/tasks-panel";
 import UsagePanel from "@/components/usage-panel";
@@ -186,6 +187,7 @@ export default function Home() {
           />
         )}
         {activeTab === "email" && <EmailPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
+        {activeTab === "calendar" && <CalendarPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "integrations" && <IntegrationsPanel health={health} onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "usage" && <UsagePanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "tasks" && <TasksPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
