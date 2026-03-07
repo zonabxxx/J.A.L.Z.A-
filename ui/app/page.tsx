@@ -182,9 +182,9 @@ export default function Home() {
           />
         )}
         {activeTab === "email" && <EmailPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
-        {activeTab === "integrations" && <IntegrationsPanel health={health} />}
-        {activeTab === "usage" && <UsagePanel />}
-        {activeTab === "tasks" && <TasksPanel />}
+        {activeTab === "integrations" && <IntegrationsPanel health={health} onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
+        {activeTab === "usage" && <UsagePanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
+        {activeTab === "tasks" && <TasksPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
       </main>
 
       <SettingsModal

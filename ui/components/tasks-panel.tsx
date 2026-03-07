@@ -21,7 +21,12 @@ const SCHEDULE_OPTIONS = [
   { value: "custom", label: "Vlastný..." },
 ];
 
-export default function TasksPanel() {
+interface Props {
+  onMenuToggle?: () => void;
+  onBack?: () => void;
+}
+
+export default function TasksPanel({ onMenuToggle, onBack }: Props) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [agents, setAgents] = useState<Record<string, { name: string }>>({});
   const [showCreate, setShowCreate] = useState(false);
@@ -98,21 +103,37 @@ export default function TasksPanel() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Plánované úlohy</h2>
-          <p className="text-sm text-zinc-500 mt-0.5">
-            Agent vykonáva úlohy pravidelne s daným promptom
-          </p>
+    <div className="flex-1 flex flex-col h-[100dvh] md:h-full overflow-hidden">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-zinc-900/50 safe-top">
+        <div className="flex items-center gap-3">
+          {onMenuToggle && (
+            <button onClick={onMenuToggle} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1 -ml-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          )}
+          {onBack && (
+            <button onClick={onBack} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1" title="Späť na chat">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <h2 className="font-semibold text-sm">Plánované úlohy</h2>
+            <p className="text-[10px] text-zinc-500">Automatické úlohy agenta</p>
+          </div>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="text-sm px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
         >
-          + Nová úloha
+          + Nová
         </button>
-      </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
 
       {showCreate && (
         <div className="bg-zinc-900 rounded-xl border border-zinc-700 p-5 space-y-3">
@@ -293,6 +314,7 @@ export default function TasksPanel() {
             — každú hodinu
           </p>
         </div>
+      </div>
       </div>
     </div>
   );

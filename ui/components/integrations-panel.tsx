@@ -20,23 +20,34 @@ interface Props {
     check: () => void;
     isOnline: (id: string) => boolean;
   };
+  onMenuToggle?: () => void;
+  onBack?: () => void;
 }
 
-export default function IntegrationsPanel({ health }: Props) {
+export default function IntegrationsPanel({ health, onMenuToggle, onBack }: Props) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/integrations");
-      const data = await res.json();
-      if (data.integrations) setIntegrations(data.integrations);
-    } catch {
-      // error
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.integrations) setIntegrations(data.integrations);
+        else if (data.error) setError(data.error);
+      } catch {
+        setError("Backend vrátil neplatnú odpoveď – tunnel pravdepodobne nebeží.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nepodarilo sa načítať integrácie");
     } finally {
       setLoading(false);
     }
@@ -143,32 +154,47 @@ export default function IntegrationsPanel({ health }: Props) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Integrácie (MCP)</h2>
-          <p className="text-sm text-zinc-500 mt-0.5">
-            Pripojenia agenta k externým službám
-          </p>
+    <div className="flex-1 flex flex-col h-[100dvh] md:h-full overflow-hidden">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-zinc-900/50 safe-top">
+        <div className="flex items-center gap-3">
+          {onMenuToggle && (
+            <button onClick={onMenuToggle} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1 -ml-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          )}
+          {onBack && (
+            <button onClick={onBack} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1" title="Späť na chat">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <h2 className="font-semibold text-sm">Integrácie (MCP)</h2>
+            <p className="text-[10px] text-zinc-500">Pripojenia agenta k externým službám</p>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-green-500" />
-            {integrations.filter((i) => getLiveStatus(i) === "connected").length} pripojených
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            {integrations.filter((i) => getLiveStatus(i) === "connected").length}
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            {integrations.filter((i) => getLiveStatus(i) === "disconnected").length} odpojených
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            {integrations.filter((i) => getLiveStatus(i) === "disconnected").length}
           </span>
-          <button
-            onClick={health.check}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors"
-            title="Obnoviť stav"
-          >
-            ↻
-          </button>
+          <button onClick={() => { health.check(); load(); }} className="text-zinc-500 hover:text-zinc-300 transition-colors text-sm" title="Obnoviť">↻</button>
         </div>
-      </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
+      {error && (
+        <div className="px-3 py-2 rounded-lg bg-red-600/10 border border-red-600/20 text-red-400 text-xs">
+          {error}
+        </div>
+      )}
 
       {typeGroups.map((group) => {
         const items = integrations.filter((i) =>
@@ -344,6 +370,7 @@ export default function IntegrationsPanel({ health }: Props) {
           </section>
         );
       })}
+      </div>
     </div>
   );
 }

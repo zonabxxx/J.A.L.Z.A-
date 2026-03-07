@@ -39,7 +39,12 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-export default function UsagePanel() {
+interface Props {
+  onMenuToggle?: () => void;
+  onBack?: () => void;
+}
+
+export default function UsagePanel({ onMenuToggle, onBack }: Props) {
   const [period, setPeriod] = useState<Period>("month");
   const [data, setData] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,12 +87,27 @@ export default function UsagePanel() {
   const maxDayCost = days.length > 0 ? Math.max(...days.map(([, v]) => v.cost), 0.001) : 1;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Spotreba & Náklady</h2>
-          <p className="text-sm text-zinc-500 mt-0.5">Prehľad používania modelov</p>
+    <div className="flex-1 flex flex-col h-[100dvh] md:h-full overflow-hidden">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-zinc-900/50 safe-top">
+        <div className="flex items-center gap-3">
+          {onMenuToggle && (
+            <button onClick={onMenuToggle} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1 -ml-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          )}
+          {onBack && (
+            <button onClick={onBack} className="md:hidden text-zinc-400 hover:text-zinc-200 p-1" title="Späť na chat">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <div>
+            <h2 className="font-semibold text-sm">Spotreba & Náklady</h2>
+            <p className="text-[10px] text-zinc-500">Prehľad používania modelov</p>
+          </div>
         </div>
         <div className="flex bg-zinc-800 rounded-lg p-0.5">
           {(["day", "week", "month"] as Period[]).map((p) => (
@@ -102,7 +122,9 @@ export default function UsagePanel() {
             </button>
           ))}
         </div>
-      </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -193,6 +215,7 @@ export default function UsagePanel() {
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }
