@@ -1046,7 +1046,9 @@ Odpovedz IBA JSON, nič iné.`;
                   }
                 }
               }
-              if (data.saved > 0) {
+              if (data.analysis) {
+                summary += `\n---\n\n**📊 Analýza:**\n\n${data.analysis}`;
+              } else if (data.saved > 0) {
                 summary += `\nDáta sú uložené. Teraz sa ma môžeš pýtať na tieto informácie.`;
               }
             }
