@@ -1,0 +1,32 @@
+
+========== STEP 1 - LOGIN ==========
+SUCCESS: Logged in
+
+========== STEP 2 - DASHBOARD (📊) ==========
+Stats cards shown: YES
+AI summary: YES
+SUCCESS
+
+========== STEP 3 - ZAPAMÄTAJ SI (Memory) ==========
+Fact saved (🧠 Zapamätal som si): NO
+FAILURE
+
+========== STEP 4 - AGENT TASK ==========
+🤖 Agent badge: NO
+Step-by-step: NO
+Tool usage: NO
+PARTIAL
+
+========== STEP 5 - SCHEDULER (Úlohy) ==========
+Scheduler aktívny (green): YES
+Tasks panel: YES
+História button: YES
+SUCCESS
+
+========== STEP 6 - SETTINGS (Push notifications) ==========
+Push notification toggle visible: NO
+NOT FOUND (may be in different settings view)
+
+========== STEP 7 - WEB SEARCH ==========
+Weather response: YES
+SUCCESS

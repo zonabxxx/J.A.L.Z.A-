@@ -7,6 +7,7 @@ import {
 } from "@/lib/location";
 import { getFeatures, type FeatureFlags } from "@/lib/features";
 import { logoutUser, type User } from "@/lib/auth";
+import { subscribeToPush, unsubscribeFromPush, isPushSupported, isPushSubscribed } from "@/lib/push-notifications";
 
 interface Settings {
   update_enabled: boolean;
@@ -58,9 +59,14 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
   const [newUrl, setNewUrl] = useState("");
   const [addingUrl, setAddingUrl] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setPushSupported(isPushSupported());
+    isPushSubscribed().then(setPushEnabled);
+
     fetch("/api/settings")
       .then((r) => r.json())
       .then(setSettings)
@@ -327,6 +333,33 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
                   Odhlásiť
                 </button>
               </section>
+
+              {/* Push notifikácie */}
+              {pushSupported && (
+                <section className="flex items-center justify-between py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-base">🔔</span>
+                    <div>
+                      <div className="text-sm font-medium">Push notifikácie</div>
+                      <div className="text-xs text-zinc-500">
+                        {pushEnabled ? "Aktívne — budeš dostávať upozornenia" : "Povoľ pre pripomienky a úlohy"}
+                      </div>
+                    </div>
+                  </div>
+                  <Toggle
+                    enabled={pushEnabled}
+                    onToggle={async () => {
+                      if (pushEnabled) {
+                        await unsubscribeFromPush();
+                        setPushEnabled(false);
+                      } else {
+                        const ok = await subscribeToPush();
+                        setPushEnabled(ok);
+                      }
+                    }}
+                  />
+                </section>
+              )}
 
               {/* Funkcie */}
               <section className="space-y-1">
