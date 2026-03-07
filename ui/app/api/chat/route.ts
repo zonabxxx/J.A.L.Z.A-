@@ -125,6 +125,25 @@ export async function POST(req: NextRequest) {
     .filter((m: { role: string }) => m.role !== "system")
     .slice(-20);
 
+  // Inject persistent facts into context
+  if (!agent) {
+    try {
+      const factsRes = await backendPost("/facts", { action: "list", limit: 30 });
+      if (factsRes.ok) {
+        const factsData = await factsRes.json();
+        const factsList = factsData.facts;
+        if (factsList && factsList.length > 0) {
+          const factsBlock = factsList.map((f: { fact: string }) => `- ${f.fact}`).join("\n");
+          finalMessages = [
+            { role: "user", content: `Dodatočné fakty z pamäte (použi ich ak sú relevantné):\n${factsBlock}` },
+            { role: "assistant", content: "Rozumiem, mám tieto fakty na pamäti." },
+            ...finalMessages,
+          ];
+        }
+      }
+    } catch { /* no facts available */ }
+  }
+
   if (agent) {
     try {
       const ctxRes = await backendPost("/context", {

@@ -893,6 +893,34 @@ Odpovedz IBA JSON, nič iné.`;
         return;
       }
 
+      // Handle "remember" / "zapamätaj si" — save to facts
+      const rememberMatch = content.match(/^(?:zapam[aä]taj\s+si|remember|zapíš si|poznač si|ulož si do pamäte)[,:.]?\s*(.+)/i);
+      if (rememberMatch) {
+        const factText = rememberMatch[1].trim();
+        const memRoute: RouteResult = { type: "text", model: "jalza", label: "Pamäť", icon: "🧠" };
+        setCurrentRoute(memRoute);
+        try {
+          const res = await fetch("/api/facts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "add", fact: factText }),
+          });
+          const data = await res.json();
+          const reply = data.status === "saved"
+            ? `🧠 **Zapamätal som si:** ${factText}`
+            : `❌ Nepodarilo sa uložiť: ${data.error || "neznáma chyba"}`;
+          const msg: ChatMessage = { role: "assistant", content: reply, route: memRoute };
+          const final = [...updated, msg];
+          setMessages(final);
+          debouncedSave(final, conversationId);
+        } catch {
+          setMessages([...updated, { role: "assistant", content: "❌ Chyba pri ukladaní do pamäte.", route: memRoute }]);
+        } finally {
+          setIsStreaming(false);
+        }
+        return;
+      }
+
       // Cancel pending email only on clearly different topic
       if (pendingEmailRef.current && !/mail|email|posli|pošli|ano|ok|potvrd|potvrď|odosli|odošli|send|yes/i.test(lowerTrimmed)) {
         pendingEmailRef.current = null;

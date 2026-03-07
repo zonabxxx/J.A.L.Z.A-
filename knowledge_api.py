@@ -1070,6 +1070,70 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 logger.error(f"Agent run error: {e}")
                 self._send_json({"error": str(e)}, 500)
 
+        elif self.path == "/facts":
+            body = self._read_body()
+            action = body.get("action", "list")
+            facts_db = os.path.join(BASE_DIR, "memory", "jalza.db")
+            os.makedirs(os.path.join(BASE_DIR, "memory"), exist_ok=True)
+
+            conn = sqlite3.connect(facts_db)
+            conn.execute("""CREATE TABLE IF NOT EXISTS facts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fact TEXT NOT NULL UNIQUE,
+                category TEXT DEFAULT 'general',
+                created_at TEXT DEFAULT (datetime('now','localtime'))
+            )""")
+
+            if action == "list":
+                rows = conn.execute(
+                    "SELECT id, fact, category, created_at FROM facts ORDER BY id DESC LIMIT ?",
+                    (body.get("limit", 100),)
+                ).fetchall()
+                facts = [{"id": r[0], "fact": r[1], "category": r[2], "created_at": r[3]} for r in rows]
+                conn.close()
+                self._send_json({"facts": facts, "total": len(facts)})
+
+            elif action == "add":
+                fact_text = body.get("fact", "").strip()
+                category = body.get("category", "general")
+                if not fact_text:
+                    conn.close()
+                    self._send_json({"error": "fact required"}, 400)
+                    return
+                try:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO facts (fact, category, created_at) VALUES (?, ?, ?)",
+                        (fact_text, category, _dt.datetime.now().isoformat())
+                    )
+                    conn.commit()
+                    conn.close()
+                    self._send_json({"status": "saved", "fact": fact_text})
+                except Exception as e:
+                    conn.close()
+                    self._send_json({"error": str(e)}, 500)
+
+            elif action == "delete":
+                fact_id = body.get("id")
+                if fact_id:
+                    conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+                conn.commit()
+                conn.close()
+                self._send_json({"status": "deleted"})
+
+            elif action == "search":
+                query = body.get("query", "")
+                rows = conn.execute(
+                    "SELECT id, fact, category, created_at FROM facts WHERE fact LIKE ? ORDER BY id DESC LIMIT 20",
+                    (f"%{query}%",)
+                ).fetchall()
+                facts = [{"id": r[0], "fact": r[1], "category": r[2], "created_at": r[3]} for r in rows]
+                conn.close()
+                self._send_json({"facts": facts})
+
+            else:
+                conn.close()
+                self._send_json({"error": "Unknown action"}, 400)
+
         elif self.path == "/integrations/tts":
             body = self._read_body()
             text = body.get("text", "")
