@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import type { Agent } from "@/lib/types";
 import type { ChatMessage } from "@/lib/hooks";
 import type { RouteResult } from "@/lib/router";
@@ -103,6 +104,16 @@ export default function Chat({
   }, [messages]);
 
   useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
     inputRef.current?.focus();
   }, [activeAgent]);
 
@@ -156,8 +167,7 @@ export default function Chat({
     reader.onload = () => {
       const result = reader.result as string;
       setImagePreview(result);
-      const base64 = result.split(",")[1];
-      setImageBase64(base64);
+      setImageBase64(result);
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -171,7 +181,7 @@ export default function Chat({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-[100dvh] md:h-full overflow-hidden">
       <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b bg-zinc-900/50 safe-top">
         <div className="flex items-center gap-3">
           {/* Hamburger for mobile */}
@@ -357,18 +367,52 @@ export default function Chat({
               ) : (
                 <div className="group relative">
                   <div
-                    className={`rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                    className={`rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed ${
                       msg.role === "user"
-                        ? "bg-blue-600 text-white"
+                        ? "bg-blue-600 text-white whitespace-pre-wrap"
                         : "bg-zinc-800 text-zinc-200"
                     }`}
                   >
-                    {msg.content || (
+                    {!msg.content ? (
                       <span className="inline-flex gap-1">
                         <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" />
                         <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.1s]" />
                         <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
                       </span>
+                    ) : msg.role === "user" ? (
+                      msg.content
+                    ) : (
+                      <ReactMarkdown
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all">
+                              {children}
+                            </a>
+                          ),
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                          li: ({ children }) => <li>{children}</li>,
+                          strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                          em: ({ children }) => <em className="italic text-zinc-300">{children}</em>,
+                          code: ({ children, className }) => {
+                            const isBlock = className?.includes("language-");
+                            return isBlock ? (
+                              <code className="block bg-zinc-900 rounded-lg px-3 py-2 my-2 text-xs font-mono overflow-x-auto text-emerald-400">{children}</code>
+                            ) : (
+                              <code className="bg-zinc-700/60 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-400">{children}</code>
+                            );
+                          },
+                          pre: ({ children }) => <pre className="my-2">{children}</pre>,
+                          h1: ({ children }) => <h1 className="text-base font-bold mb-2 text-zinc-100">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-sm font-bold mb-1.5 text-zinc-100">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 text-zinc-200">{children}</h3>,
+                          blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 text-zinc-400 italic">{children}</blockquote>,
+                          hr: () => <hr className="border-zinc-700 my-3" />,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     )}
                   </div>
                   {msg.role === "user" && !isStreaming && (
@@ -394,7 +438,7 @@ export default function Chat({
         <div ref={bottomRef} />
       </div>
 
-      <div className="px-3 md:px-6 pb-safe pt-2">
+      <div className="px-3 md:px-6 pb-safe pt-2 sticky bottom-0 bg-zinc-900 z-20 border-t border-zinc-800/60">
         {/* Image preview */}
         {imagePreview && (
           <div className="mb-2 relative inline-block">
@@ -461,7 +505,7 @@ export default function Chat({
           )}
           <div className="flex-1 relative">
             {interimText && (
-              <div className="absolute -top-12 left-0 right-0 bg-zinc-800/95 backdrop-blur border border-red-500/30 rounded-lg px-3 py-2 text-sm text-zinc-200 shadow-lg z-10">
+              <div className="absolute bottom-full mb-2 left-0 right-0 bg-zinc-800/95 backdrop-blur border border-red-500/30 rounded-lg px-3 py-2 text-sm text-zinc-200 shadow-lg z-30">
                 <span className="text-red-400 mr-1.5 animate-pulse">●</span>
                 {interimText}
               </div>
@@ -477,7 +521,7 @@ export default function Chat({
                   : "Napíš správu..."
               }
               rows={1}
-              className={`w-full bg-transparent outline-none resize-none text-sm py-1.5 max-h-32 ${interimText ? "text-red-300/80 italic" : ""}`}
+              className={`w-full bg-transparent outline-none resize-none text-base md:text-sm py-2 md:py-1.5 max-h-40 md:max-h-32 ${interimText ? "text-red-300/80 italic" : ""}`}
               readOnly={!!interimText}
             />
           </div>

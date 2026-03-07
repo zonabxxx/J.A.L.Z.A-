@@ -181,7 +181,7 @@ export default function Home() {
             onStop={stopGeneration}
           />
         )}
-        {activeTab === "email" && <EmailPanel />}
+        {activeTab === "email" && <EmailPanel onMenuToggle={() => setSidebarOpen((p) => !p)} onBack={() => setActiveTab("chat")} />}
         {activeTab === "integrations" && <IntegrationsPanel health={health} />}
         {activeTab === "usage" && <UsagePanel />}
         {activeTab === "tasks" && <TasksPanel />}

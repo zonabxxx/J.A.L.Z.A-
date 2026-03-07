@@ -991,11 +991,10 @@ Odpovedz IBA JSON, nič iné.`;
 
   const sendVisionMessage = useCallback(
     async (content: string, imageBase64: string) => {
-      const lower = content.toLowerCase().trim();
-      const isEditRequest = /uprav|zmeň|zmen|pridaj|odober|odstraň|odstran|vymaz|vymaž|prefarbi|prefarb|nakresli|doplň|dopln|vymeň|vymen|štyliz|styliz|transformuj|urob|sprav|edit|change|add|remove|replace/i.test(lower);
-      const hasEditPrompt = content.trim().length > 0 && isEditRequest;
+      const hasText = content.trim().length > 0;
+      const isAnalysisQuestion = hasText && /^(čo|co|popíš|popis|analyzuj|analyse|analyze|describe|what|aké|ake|kde|kto|prečo|preco|koľko|kolko|je tu|vidíš|vidis|rozpoznaj)/i.test(content.trim());
 
-      if (hasEditPrompt) {
+      if (hasText && !isAnalysisQuestion) {
         const route: RouteResult = {
           type: "image",
           model: "gemini-image",
@@ -1015,7 +1014,7 @@ Odpovedz IBA JSON, nič iné.`;
         try {
           const imageDataUrl = imageBase64.startsWith("data:")
             ? imageBase64
-            : `data:image/png;base64,${imageBase64}`;
+            : `data:image/jpeg;base64,${imageBase64}`;
 
           const res = await fetch("/api/generate-image", {
             method: "POST",
@@ -1069,9 +1068,10 @@ Odpovedz IBA JSON, nič iné.`;
       setIsStreaming(true);
 
       try {
+        const rawBase64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
         await streamResponse(
           "/api/vision",
-          { prompt: content, images: [imageBase64] },
+          { prompt: content, images: [rawBase64] },
           route,
           updated,
           conversationId

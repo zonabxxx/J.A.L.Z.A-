@@ -17,6 +17,10 @@
   html, body {
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
+    height: 100%;
+  }
+  @supports (height: 100dvh) {
+    html, body { height: 100dvh; }
   }
   input, textarea, select {
     font-size: 16px !important;

@@ -13,6 +13,7 @@ export interface Agent {
 }
 
 export interface Email {
+  id?: string;
   sender: string;
   sender_email: string;
   subject: string;

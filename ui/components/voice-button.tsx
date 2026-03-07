@@ -9,6 +9,7 @@ interface Props {
 
 export default function VoiceButton({ onTranscript, onInterim, disabled }: Props) {
   const [isListening, setIsListening] = useState(false);
+  const isListeningRef = useRef(false);
   const recognitionRef = useRef<ReturnType<typeof createRecognition> | null>(null);
   const finalTextRef = useRef("");
 
@@ -35,12 +36,13 @@ export default function VoiceButton({ onTranscript, onInterim, disabled }: Props
     rec.lang = "sk-SK";
     rec.continuous = true;
     rec.interimResults = true;
-    rec.maxAlternatives = 1;
+    rec.maxAlternatives = 3;
 
     return rec;
   }, []);
 
   const stop = useCallback(() => {
+    isListeningRef.current = false;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
@@ -76,26 +78,37 @@ export default function VoiceButton({ onTranscript, onInterim, disabled }: Props
     };
 
     rec.onerror = (e) => {
-      if (e.error !== "aborted" && e.error !== "no-speech") {
+      if (e.error === "no-speech") {
+        return;
+      }
+      if (e.error !== "aborted") {
         console.warn("Speech recognition error:", e.error);
       }
       setIsListening(false);
     };
 
     rec.onend = () => {
-      setIsListening(false);
       const text = finalTextRef.current.trim();
       if (text) {
+        setIsListening(false);
         onTranscript(text);
+        if (onInterim) onInterim("");
+      } else if (isListeningRef.current) {
+        try { rec.start(); } catch { setIsListening(false); if (onInterim) onInterim(""); }
+        return;
+      } else {
+        setIsListening(false);
+        if (onInterim) onInterim("");
       }
-      if (onInterim) onInterim("");
     };
 
     try {
       rec.start();
       setIsListening(true);
+      isListeningRef.current = true;
     } catch {
       setIsListening(false);
+      isListeningRef.current = false;
     }
   }, [createRecognition, onTranscript, onInterim]);
 
