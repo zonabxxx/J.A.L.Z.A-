@@ -1002,6 +1002,59 @@ Odpovedz IBA JSON, nič iné.`;
           return;
         }
 
+        if (route.type === "business") {
+          const bizMsg: ChatMessage = { role: "assistant", content: "🏢 **Business** — načítavam firemné dáta…", route };
+          setMessages([...updated, bizMsg]);
+
+          try {
+            const summaryRes = await fetch("/api/business?action=summary");
+            const summaryData = await summaryRes.json();
+
+            if (summaryData.error) {
+              setMessages([...updated, { role: "assistant", content: `❌ Chyba: ${summaryData.error}`, route }]);
+              setIsStreaming(false);
+              return;
+            }
+
+            const ctx = `Business dáta firmy:
+- Aktívne zákazky: ${summaryData.orders?.active || 0} (hodnota: ${summaryData.orders?.totalValue?.toFixed(2) || 0}€)
+- Návrhy zákaziek: ${summaryData.orders?.draft || 0}
+- Dokončené: ${summaryData.orders?.completed || 0}
+- Nové tento mesiac: ${summaryData.orders?.newThisMonth || 0}
+- Nezaplatené vydané faktúry: ${summaryData.invoicesIssued?.unpaid?.toFixed(2) || 0}€
+- Po splatnosti: ${summaryData.invoicesIssued?.overdue || 0}
+- Mesačný obrat (zaplatené): ${summaryData.invoicesIssued?.monthRevenue?.toFixed(2) || 0}€
+- Nezaplatené prijaté faktúry: ${summaryData.invoicesIncoming?.unpaid?.toFixed(2) || 0}€
+Aktívne zákazky:
+${(summaryData.activeOrders || []).map((o: any) => `  ${o.orderNumber} — ${o.name} (${o.customerName || "—"}) — ${o.totalValue?.toFixed(2) || 0}€`).join("\n")}`;
+
+            const geminiRes = await fetch("/api/gemini", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt: `Na základe firemných business dát odpovedz na otázku používateľa. Odpovedaj v slovenčine, stručne a prehľadne. Použi tabuľky alebo zoznamy ak je to vhodné.
+
+${ctx}
+
+Otázka: ${content}`,
+              }),
+            });
+            const geminiData = await geminiRes.json();
+            const answer = geminiData.text || geminiData.response || "Nepodarilo sa vygenerovať odpoveď.";
+
+            const resultMsg: ChatMessage = { role: "assistant", content: `🏢 **Business prehľad:**\n\n${answer}`, route };
+            const finalMsgs = [...updated, resultMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+            trackUsage({ model: "gemini-2.0-flash", route: "business", outputText: answer });
+          } catch {
+            setMessages([...updated, { role: "assistant", content: "❌ Nepodarilo sa načítať business dáta.", route }]);
+          } finally {
+            setIsStreaming(false);
+          }
+          return;
+        }
+
         if (route.type === "agent") {
           const agentMsg: ChatMessage = { role: "assistant", content: "🤖 **Agent spustený** — pracujem na úlohe krok po kroku…", route };
           setMessages([...updated, agentMsg]);

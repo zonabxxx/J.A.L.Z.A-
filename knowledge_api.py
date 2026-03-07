@@ -11,9 +11,13 @@ import sqlite3
 import secrets
 import hashlib
 import base64
+import logging
 import datetime as _dt
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
+
+logger = logging.getLogger("jalza-api")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 from knowledge_base import KnowledgeBase, list_knowledge_bases
 from specialist_agent import ask_specialist, ask_multi_kb, search_multi_kb, build_multi_kb_context, AGENTS
 
@@ -1628,6 +1632,40 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             else:
                 conn.close()
                 self._send_json({"error": f"Unknown action: {action}"}, 400)
+
+        elif self.path == "/business" or self.path.startswith("/business/"):
+            body = self._read_body()
+            action = body.get("action", "summary")
+            biz_url = os.environ.get("BUSINESS_FLOW_URL", "https://business-flow-ai.up.railway.app").rstrip("/")
+            biz_token = API_TOKEN
+
+            try:
+                import urllib.request
+                import urllib.parse
+
+                params = {"action": action}
+                for k in ["status", "type", "search", "limit", "offset", "period", "id", "query"]:
+                    if k in body:
+                        params[k] = str(body[k])
+
+                if action == "search":
+                    req_url = f"{biz_url}/api/jalza"
+                    req_data = json.dumps({"action": "search", "query": body.get("query", ""), "type": body.get("type", "orders")}).encode()
+                    req = urllib.request.Request(req_url, data=req_data, method="POST")
+                    req.add_header("Content-Type", "application/json")
+                else:
+                    qs = urllib.parse.urlencode(params)
+                    req_url = f"{biz_url}/api/jalza?{qs}"
+                    req = urllib.request.Request(req_url, method="GET")
+
+                req.add_header("X-API-Token", biz_token)
+
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    result = json.loads(resp.read().decode())
+                    self._send_json(result)
+            except Exception as e:
+                logger.error(f"Business API error: {e}")
+                self._send_json({"error": str(e)}, 502)
 
         elif self.path == "/email/check":
             body = self._read_body()

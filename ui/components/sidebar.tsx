@@ -173,6 +173,7 @@ export default function Sidebar({
             { id: "chat", label: "Chat", icon: "💬" },
             { id: "email", label: "Email", icon: "📧" },
             { id: "calendar", label: "Kalendár", icon: "📅" },
+            { id: "business", label: "Business", icon: "🏢" },
             { id: "integrations", label: "MCP", icon: "🔗" },
             { id: "usage", label: "Spotreba", icon: "📈" },
             { id: "tasks", label: "Úlohy", icon: "✅" },

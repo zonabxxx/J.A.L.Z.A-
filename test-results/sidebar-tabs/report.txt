@@ -1,5 +1,0 @@
-=== SIDEBAR TAB NAVIGATION REPORT ===
-Grid/flex layout: YES
-Icons + labels: YES
-Tab clicks: Email: OK, Kalendár: OK, MCP: OK, Spotreba: OK, Úlohy: OK, Dashboard: OK
-Screenshots: sidebar-tabs-initial.png, sidebar-tabs-final.png, full-page-*.png

@@ -1,0 +1,19 @@
+
+=== STEP 1 - LOGIN ===
+SUCCESS: Logged in
+
+=== STEP 2 - SIDEBAR TABS ===
+4-col grid with icons: YES
+
+=== STEP 3 - EMAIL ===
+Emails load: YES
+
+=== STEP 4 - CHAT ===
+J.A.L.Z.A. responds: YES
+
+=== STEP 5 - DASHBOARD ===
+Dashboard loads: YES
+Stats shown: YES
+
+=== TUNNEL VERIFICATION ===
+If all steps succeeded, the Cloudflare tunnel connection is working.
