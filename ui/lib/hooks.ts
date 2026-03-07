@@ -77,6 +77,7 @@ export interface ChatMessage extends Message {
   emails?: EmailData[];
   mailbox?: string;
   generatedImage?: string;
+  uploadedImage?: string;
   calendarEvents?: CalendarEventData[];
 }
 
@@ -846,9 +847,12 @@ Odpovedz IBA JSON, nič iné.`;
         activeAgent?.name
       );
 
-      const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
-      if (lastAssistant?.generatedImage && route.type === "text") {
-        route = { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
+      const recentMessages = [...messages].reverse();
+      const lastAssistant = recentMessages.find(m => m.role === "assistant");
+      const lastUserWithImage = recentMessages.find(m => m.uploadedImage);
+      const lastImage = lastAssistant?.generatedImage || lastUserWithImage?.uploadedImage || null;
+      if (lastImage && route.type === "text") {
+        route = { type: "image", model: "gemini-image", label: "Obrázok · edit", icon: "🎨" };
       }
 
       setCurrentRoute(route);
@@ -870,15 +874,19 @@ Odpovedz IBA JSON, nič iné.`;
         }
 
         if (route.type === "image") {
-          const assistantMsg: ChatMessage = { role: "assistant", content: "", route };
+          const assistantMsg: ChatMessage = { role: "assistant", content: lastImage ? "Upravujem obrázok…" : "", route };
           const withAssistant = [...updated, assistantMsg];
           setMessages(withAssistant);
 
           try {
+            const body: Record<string, unknown> = { prompt: content, useProxy: getFeatures().usProxy };
+            if (lastImage) {
+              body.image = lastImage;
+            }
             const res = await fetch("/api/generate-image", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: content, useProxy: getFeatures().usProxy }),
+              body: JSON.stringify(body),
             });
             const data = await res.json();
 
@@ -1003,7 +1011,11 @@ Odpovedz IBA JSON, nič iné.`;
         };
         setCurrentRoute(route);
 
-        const userMsg: ChatMessage = { role: "user", content: `🎨 ${content}`, route };
+        const imageDataUrl = imageBase64.startsWith("data:")
+          ? imageBase64
+          : `data:image/jpeg;base64,${imageBase64}`;
+
+        const userMsg: ChatMessage = { role: "user", content: `🎨 ${content}`, route, uploadedImage: imageDataUrl };
         const updated = [...messages, userMsg];
         setMessages(updated);
         setIsStreaming(true);
@@ -1012,9 +1024,6 @@ Odpovedz IBA JSON, nič iné.`;
         setMessages([...updated, loadingMsg]);
 
         try {
-          const imageDataUrl = imageBase64.startsWith("data:")
-            ? imageBase64
-            : `data:image/jpeg;base64,${imageBase64}`;
 
           const res = await fetch("/api/generate-image", {
             method: "POST",
@@ -1058,10 +1067,14 @@ Odpovedz IBA JSON, nič iné.`;
       setCurrentRoute(route);
 
       const displayContent = content || "Analyzuj tento obrázok";
+      const visionDataUrl = imageBase64.startsWith("data:")
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
       const userMsg: ChatMessage = {
         role: "user",
         content: `📷 ${displayContent}`,
         route,
+        uploadedImage: visionDataUrl,
       };
       const updated = [...messages, userMsg];
       setMessages(updated);
