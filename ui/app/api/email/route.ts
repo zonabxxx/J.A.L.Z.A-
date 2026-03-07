@@ -1,6 +1,18 @@
 import { NextRequest } from "next/server";
 import { backendPost } from "@/lib/api-client";
 
+async function safeJson(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+      return { error: "Backend vrátil HTML – tunnel pravdepodobne nebeží alebo je nedostupný." };
+    }
+    return { error: `Neplatná odpoveď z backendu: ${text.slice(0, 200)}` };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const todayOnly = searchParams.get("today") === "true";
@@ -20,10 +32,16 @@ export async function GET(req: NextRequest) {
     }
 
     const res = await backendPost(endpoint, payload);
-    return Response.json(await res.json());
+    const data = await safeJson(res);
+
+    if (!res.ok && !data.error) {
+      data.error = `Backend HTTP ${res.status}`;
+    }
+
+    return Response.json(data, { status: data.error ? 502 : 200 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    return Response.json({ error: msg }, { status: 502 });
+    return Response.json({ error: `Pripojenie zlyhalo: ${msg}` }, { status: 502 });
   }
 }
 
@@ -42,7 +60,7 @@ export async function POST(req: NextRequest) {
         subject: body.subject,
         body: body.body,
       });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     if (action === "reply") {
@@ -53,7 +71,7 @@ export async function POST(req: NextRequest) {
         id: body.id,
         body: body.body,
       });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     if (action === "read") {
@@ -61,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (mailbox === "juraj") endpoint = "/email/juraj/read";
 
       const res = await backendPost(endpoint, { id: body.id });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     if (action === "search") {
@@ -72,24 +90,24 @@ export async function POST(req: NextRequest) {
         query: body.query,
         limit: body.limit || 10,
       });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     if (action === "cleanup") {
       const res = await backendPost("/email/cleanup", {
         dry_run: body.dry_run ?? true,
       });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     if (action === "cleanup_execute") {
       const res = await backendPost("/email/cleanup", { dry_run: false });
-      return Response.json(await res.json());
+      return Response.json(await safeJson(res));
     }
 
     return Response.json({ error: "Unknown action" }, { status: 400 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    return Response.json({ error: msg }, { status: 500 });
+    return Response.json({ error: `Pripojenie zlyhalo: ${msg}` }, { status: 500 });
   }
 }
