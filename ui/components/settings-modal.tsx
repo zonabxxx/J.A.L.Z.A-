@@ -280,7 +280,7 @@ export default function SettingsModal({ user, open, onClose, onLogout }: Props) 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[85vh] min-h-[50vh] flex flex-col shadow-2xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-zinc-800">
           <div className="flex items-center gap-4">
