@@ -26,9 +26,11 @@ export async function GET(req: NextRequest) {
     if (mailbox === "adsun") {
       endpoint = "/email/adsun/list";
       payload.unseen_only = !todayOnly;
+      payload.today_only = todayOnly;
     } else if (mailbox === "juraj") {
       endpoint = "/email/juraj/list";
       payload.unseen_only = !todayOnly;
+      payload.today_only = todayOnly;
     }
 
     const res = await backendPost(endpoint, payload);

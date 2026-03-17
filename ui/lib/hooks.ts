@@ -293,7 +293,7 @@ export function useChat(activeAgent: Agent | null) {
     );
   };
 
-  const callGemini = async (prompt: string, mailboxes?: Mailbox[]): Promise<string | null> => {
+  const callAI = async (prompt: string, mailboxes?: Mailbox[]): Promise<string | null> => {
     try {
       const mbs = mailboxes || await fetchMailboxes();
       const systemPrompt = buildEmailSystemPrompt(mbs);
@@ -306,7 +306,7 @@ export function useChat(activeAgent: Agent | null) {
       const data = await res.json();
       const text = data.text || null;
       if (text) {
-        trackUsage({ model: "gemini-2.0-flash", route: "classify", inputText: prompt, outputText: text });
+        trackUsage({ model: "jalza", route: "email-intent", inputText: prompt, outputText: text });
       }
       return text;
     } catch { return null; }
@@ -330,7 +330,7 @@ export function useChat(activeAgent: Agent | null) {
       if (resolvedTo) {
         const draft = draftEmailRef.current;
         draftEmailRef.current = null;
-        const geminiText = await callGemini(`${draft.originalText} na adresu ${resolvedTo}`);
+        const geminiText = await callAI(`${draft.originalText} na adresu ${resolvedTo}`);
         let subject = draft.subject || "Bez predmetu";
         let body = draft.body || draft.originalText;
         if (geminiText) {
@@ -342,8 +342,7 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    // Ask Gemini to understand intent (with dynamic mailbox list)
-    const geminiText = await callGemini(userText, mailboxes);
+    const geminiText = await callAI(userText, mailboxes);
     if (!geminiText) {
       emailReply("Nepodarilo sa spojiť s Gemini. Skontroluj pripojenie.", route, updatedMessages, convId);
       return;
@@ -996,6 +995,47 @@ Odpovedz IBA JSON, nič iné.`;
             trackUsage({ model: "jalza-multi", route: "multi", outputText: summary });
           } catch {
             setMessages([...updated, { role: "assistant", content: "❌ Multi-agent zlyhalo.", route }]);
+          } finally {
+            setIsStreaming(false);
+          }
+          return;
+        }
+
+        if (route.type === "business_action") {
+          const actionMsg: ChatMessage = { role: "assistant", content: "🏗️ **Business Agent** — spracovávam požiadavku…\n\n_Hľadám produkty, vytváram projekt a cenovú ponuku…_", route };
+          setMessages([...updated, actionMsg]);
+
+          try {
+            const res = await fetch("/api/business-agent", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: content }),
+            });
+            const data = await res.json();
+
+            let resultContent = "";
+            if (data.error) {
+              resultContent = `❌ **Chyba:** ${data.error}`;
+            } else if (data.success) {
+              resultContent = `✅ **Business Agent dokončený** (${data.total_steps || 0} krokov)\n\n${data.summary || ""}`;
+              if (data.steps) {
+                resultContent += "\n\n---\n**Kroky:**\n";
+                for (const step of data.steps) {
+                  const icon = step.status === "ok" ? "✅" : "❌";
+                  resultContent += `${icon} ${step.tool}\n`;
+                }
+              }
+            } else {
+              resultContent = `⚠️ Agent nevrátil výsledok.`;
+            }
+
+            const resultMsg: ChatMessage = { role: "assistant", content: resultContent, route };
+            const finalMsgs = [...updated, resultMsg];
+            setMessages(finalMsgs);
+            debouncedSave(finalMsgs, conversationId);
+            trackUsage({ model: "gemini-2.0-flash", route: "business_action", outputText: resultContent });
+          } catch {
+            setMessages([...updated, { role: "assistant", content: "❌ Business agent zlyhал.", route }]);
           } finally {
             setIsStreaming(false);
           }

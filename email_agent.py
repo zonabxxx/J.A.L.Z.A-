@@ -128,14 +128,20 @@ class MicrosoftGraphEmail:
 
     # ── Read ──────────────────────────────────────────────────────────
 
-    def list_emails(self, limit=10, unseen_only=True, folder="inbox") -> list[dict]:
+    def list_emails(self, limit=10, unseen_only=True, folder="inbox", today_only=False) -> list[dict]:
         params = {
             "$top": limit,
             "$orderby": "receivedDateTime desc",
             "$select": "id,subject,from,receivedDateTime,bodyPreview,body,isRead",
         }
-        if unseen_only:
-            params["$filter"] = "isRead eq false"
+        filters = []
+        if unseen_only and not today_only:
+            filters.append("isRead eq false")
+        if today_only:
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+            filters.append(f"receivedDateTime ge {today_start}")
+        if filters:
+            params["$filter"] = " and ".join(filters)
 
         r = requests.get(
             self._user_url(f"/mailFolders/{folder}/messages"),
@@ -618,11 +624,11 @@ def cleanup_emails(delete_marketing=True, delete_older_than_days=365, dry_run=Tr
 #  Microsoft Graph wrappers (info@adsun.sk)
 # ══════════════════════════════════════════════════════════════════════
 
-def list_adsun_emails(limit=10, unseen_only=True) -> Union[list, dict]:
+def list_adsun_emails(limit=10, unseen_only=True, today_only=False) -> Union[list, dict]:
     if not _ms_graph.configured:
         return {"error": "Microsoft Graph nie je nakonfigurovaný. Skontroluj MS_* premenné v .env."}
     try:
-        return _ms_graph.list_emails(limit=limit, unseen_only=unseen_only)
+        return _ms_graph.list_emails(limit=limit, unseen_only=unseen_only, today_only=today_only)
     except Exception as e:
         return {"error": f"Graph API chyba: {str(e)[:200]}"}
 
@@ -715,11 +721,11 @@ def check_adsun_and_reply(dry_run=True) -> list:
 #  juraj@adsun.sk wrappers
 # ══════════════════════════════════════════════════════════════════════
 
-def list_juraj_emails(limit=10, unseen_only=True) -> Union[list, dict]:
+def list_juraj_emails(limit=10, unseen_only=True, today_only=False) -> Union[list, dict]:
     if not _ms_graph_juraj.configured:
         return {"error": "Microsoft Graph nie je nakonfigurovaný pre juraj@adsun.sk."}
     try:
-        return _ms_graph_juraj.list_emails(limit=limit, unseen_only=unseen_only)
+        return _ms_graph_juraj.list_emails(limit=limit, unseen_only=unseen_only, today_only=today_only)
     except Exception as e:
         return {"error": f"Graph API chyba: {str(e)[:200]}"}
 

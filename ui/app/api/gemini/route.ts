@@ -70,18 +70,21 @@ async function tryOllama(
 }
 
 export async function POST(req: NextRequest) {
-  const { prompt, systemPrompt } = await req.json();
+  const { prompt, systemPrompt, preferCloud } = await req.json();
 
-  // Try Gemini first, fall back to Ollama
-  let text = await tryGemini(prompt, systemPrompt);
+  let text: string | null = null;
 
-  if (!text) {
+  if (preferCloud) {
+    text = await tryGemini(prompt, systemPrompt);
+    if (!text) text = await tryOllama(prompt, systemPrompt);
+  } else {
     text = await tryOllama(prompt, systemPrompt);
+    if (!text) text = await tryGemini(prompt, systemPrompt);
   }
 
   if (!text) {
     return Response.json(
-      { error: "Ani Gemini ani Ollama nie sú dostupné" },
+      { error: "Ani Ollama ani Gemini nie sú dostupné" },
       { status: 502 }
     );
   }

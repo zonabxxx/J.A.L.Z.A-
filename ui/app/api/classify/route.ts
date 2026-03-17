@@ -13,6 +13,7 @@ KATEGÓRIE:
 - "agent" — používateľ zadáva KOMPLEXNÚ ÚLOHU ktorá vyžaduje VIACERO KROKOV, použitie nástrojov, alebo prístup k súborom/systému (analyzuj, sprav audit, skontroluj systém, porovnaj, spracuj dáta, vytvor report, naprogramuj, napíš skript, urob analýzu, komplexná úloha, naplánuj a vykonaj, zautomatizuj, spusti príkaz, koľko súborov, vypíš súbory, analyzuj priečinok, preskúmaj adresár, čo je v priečinku)
 - "multi" — používateľ chce odpoveď zo VŠETKÝCH znalostných agentov naraz, alebo chce porovnať informácie z viacerých databáz (opýtaj sa všetkých agentov, spýtaj sa všetkých, čo vedia všetci agenti, porovnaj znalosti, cross-knowledge)
 - "business" — používateľ sa pýta na BUSINESS DÁTA z firemného systému: zákazky, objednávky, faktúry, kalkulácie, zákazníci, financie, tržby, obrat, marža, štatistiky firmy, koľko máme zákaziek, aký je obrat, nezaplatené faktúry, zoznam zákazníkov, stav zákaziek, finančný prehľad
+- "business_action" — používateľ chce VYKONAŤ AKCIU v business systéme: vytvoriť cenovú ponuku, vytvoriť projekt, pridať zákazníka, nájsť produkt a vytvoriť kalkuláciu, poslať ponuku klientovi, spracovať objednávku, založiť zákazku — akákoľvek požiadavka na VYTVORENIE alebo ODOSLANIE niečoho v business systéme
 - "chat" — všetko ostatné (rozhovor, programovanie, matematika, vysvetlenia, preklad, kreativita, pomoc s kódom, jednoduché otázky)
 
 PRAVIDLÁ:
@@ -26,9 +27,10 @@ PRAVIDLÁ:
 - "analyzuj systém", "sprav audit", "urob analýzu", "vytvor report", "porovnaj", "skontroluj a oprav", "spusti príkaz", "naprogramuj", "zautomatizuj", "komplexná úloha", "naplánuj a vykonaj", "koľko súborov", "vypíš súbory", "analyzuj priečinok", "čo je v priečinku" → "agent"
 - "opýtaj sa všetkých agentov", "čo vedia agenti o", "spýtaj sa všetkých", "cross-knowledge" → "multi"
 - "zákazky", "objednávky", "faktúry", "kalkulácie", "zákazníci", "obrat", "tržby", "financie", "marža", "štatistiky firmy", "koľko máme", "stav zákaziek", "nezaplatené", "finančný prehľad", "aký je obrat", "mesačný report" → "business"
+- "vytvor cenovú ponuku", "pridaj zákazníka", "nájdi produkt a vytvor projekt", "pošli ponuku", "spracuj objednávku", "založ zákazku", "vytvor kalkuláciu pre", "priprav ponuku pre klienta", "chcem ponuku na" → "business_action"
 - Bežný rozhovor, otázky na vedomosti, pomoc → "chat"
 
-Odpovedz IBA jedným slovom: search, email, image, calendar, research, agent, multi, business, alebo chat`;
+Odpovedz IBA jedným slovom: search, email, image, calendar, research, agent, multi, business, business_action, alebo chat`;
 
 async function classifyWithGemini(message: string): Promise<string | null> {
   if (!GEMINI_API_KEY) return null;
@@ -88,6 +90,7 @@ function parseRoute(text: string | null): string {
   if (text.includes("research")) return "research";
   if (text.includes("agent")) return "agent";
   if (text.includes("multi")) return "multi";
+  if (text.includes("business_action")) return "business_action";
   if (text.includes("business")) return "business";
   return "chat";
 }
@@ -97,10 +100,9 @@ export async function POST(req: NextRequest) {
     const { message } = await req.json();
     if (!message) return NextResponse.json({ route: "chat" });
 
-    // Try Gemini first (fast ~200ms), fall back to Ollama
-    let result = await classifyWithGemini(message);
+    let result = await classifyWithOllama(message);
     if (!result) {
-      result = await classifyWithOllama(message);
+      result = await classifyWithGemini(message);
     }
 
     return NextResponse.json({ route: parseRoute(result) });

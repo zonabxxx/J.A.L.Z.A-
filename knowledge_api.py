@@ -22,7 +22,7 @@ from knowledge_base import KnowledgeBase, list_knowledge_bases
 from specialist_agent import ask_specialist, ask_multi_kb, search_multi_kb, build_multi_kb_context, AGENTS
 
 PORT = 8765
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.environ.get("JALZA_BASE_DIR", os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 CONVERSATIONS_DB = os.path.join(BASE_DIR, "conversations.db")
 
@@ -147,6 +147,202 @@ def save_config(cfg: dict):
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+# ── Business Agent ─────────────────────────────────────────────────────
+def _biz_api_call(action: str, data: dict = None) -> dict:
+    """Call business-flow-ai /api/jalza endpoint."""
+    import urllib.request, urllib.parse
+    biz_url = os.environ.get("BUSINESS_FLOW_URL", "https://business-flow-ai.up.railway.app").rstrip("/")
+    biz_token = API_TOKEN
+
+    WRITE_ACTIONS = {"create_customer", "create_project", "create_calculation", "share_calculation", "find_products", "search"}
+
+    if action in WRITE_ACTIONS:
+        payload = {"action": action, **(data or {})}
+        req_data = json.dumps(payload).encode()
+        req = urllib.request.Request(f"{biz_url}/api/jalza", data=req_data, method="POST")
+        req.add_header("Content-Type", "application/json")
+    else:
+        params = {"action": action, **(data or {})}
+        qs = urllib.parse.urlencode(params)
+        req = urllib.request.Request(f"{biz_url}/api/jalza?{qs}", method="GET")
+
+    req.add_header("X-API-Token", biz_token)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _gemini_call(system: str, user_msg: str) -> str:
+    """Quick Gemini call for agent reasoning."""
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        raise ValueError("GEMINI_API_KEY not set")
+
+    import urllib.request
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+    payload = {
+        "contents": [
+            {"role": "user", "parts": [{"text": f"{system}\n\n{user_msg}"}]},
+        ],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2000},
+    }
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        result = json.loads(resp.read().decode())
+    return (result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")).strip()
+
+
+def _run_business_agent(prompt: str) -> dict:
+    """
+    AI agent: analyze prompt -> find products -> create customer + project -> return link to configure.
+    The user configures and creates the calculation manually in business-flow-ai UI.
+    """
+    steps_log = []
+
+    def log_step(tool: str, status: str, data: dict = None):
+        steps_log.append({"tool": tool, "status": status, "data": data or {}})
+        logger.info(f"[BIZ-AGENT] {tool}: {status}")
+
+    parse_system = """Si business AI asistent. Analyzuj požiadavku a extrahuj štruktúrované údaje vo formáte JSON.
+
+Vráť VÝHRADNE platný JSON (bez markdown, bez vysvetlení) s týmito poľami:
+{
+  "client_name": "meno klienta alebo firmy (ak je uvedené, inak null)",
+  "client_email": "email ak je uvedený, inak null",
+  "client_phone": "telefón ak je uvedený, inak null",
+  "product_search": "čo klient chce / aký produkt hľadá (kľúčové slová)",
+  "project_name": "navrhni krátky názov projektu",
+  "quantity": 1,
+  "description": "stručný popis požiadavky"
+}
+
+Ak niečo nie je jasné, odhadni rozumné hodnoty. Vždy vráť platný JSON."""
+
+    try:
+        parsed_text = _gemini_call(parse_system, prompt)
+        parsed_text = parsed_text.strip()
+        if parsed_text.startswith("```"):
+            parsed_text = parsed_text.split("\n", 1)[1] if "\n" in parsed_text else parsed_text[3:]
+            if parsed_text.endswith("```"):
+                parsed_text = parsed_text[:-3]
+        parsed = json.loads(parsed_text)
+        log_step("parse_prompt", "ok", parsed)
+    except Exception as e:
+        log_step("parse_prompt", "error", {"error": str(e)})
+        return {"success": False, "error": f"Nepodarilo sa analyzovať požiadavku: {e}", "steps": steps_log}
+
+    result_data = {}
+
+    # Step 1: Find products (templates + EAV products + categories)
+    product_search = parsed.get("product_search", "")
+    found = {"templates": [], "products": [], "categories": []}
+    if product_search:
+        try:
+            found = _biz_api_call("find_products", {"query": product_search})
+            total = len(found.get("templates", [])) + len(found.get("products", [])) + len(found.get("categories", []))
+            log_step("find_products", "ok", {"query": product_search, "found": total})
+            result_data["found_products"] = found
+        except Exception as e:
+            log_step("find_products", "error", {"error": str(e)})
+
+    # Step 2: Find or create customer
+    client_name = parsed.get("client_name")
+    customer_data = None
+    if client_name:
+        try:
+            cust_result = _biz_api_call("create_customer", {
+                "name": client_name,
+                "email": parsed.get("client_email") or None,
+                "phone": parsed.get("client_phone") or None,
+            })
+            customer_data = cust_result.get("customer", {})
+            is_existing = cust_result.get("existing", False)
+            log_step("find_or_create_customer", "ok", {"existing": is_existing, "customer": customer_data})
+            result_data["customer"] = customer_data
+            result_data["customer_existing"] = is_existing
+        except Exception as e:
+            log_step("find_or_create_customer", "error", {"error": str(e)})
+
+    # Step 3: Create project
+    project_name = parsed.get("project_name", f"Projekt - {product_search or prompt[:30]}")
+    try:
+        project_result = _biz_api_call("create_project", {
+            "name": project_name,
+            "companyName": client_name or "",
+            "clientId": customer_data.get("id") if customer_data else None,
+            "clientEntityId": customer_data.get("id") if customer_data else None,
+        })
+        log_step("create_project", "ok", project_result)
+        result_data["project"] = project_result
+    except Exception as e:
+        log_step("create_project", "error", {"error": str(e)})
+        return {"success": False, "error": f"Nepodarilo sa vytvoriť projekt: {e}", "steps": steps_log}
+
+    # Step 4: Get app URL for link
+    app_url = ""
+    try:
+        url_result = _biz_api_call("get_app_url")
+        app_url = url_result.get("url", "")
+    except:
+        app_url = os.environ.get("BUSINESS_FLOW_URL", "https://business-flow-ai.up.railway.app")
+
+    project_id = project_result.get("id", "")
+    calc_link = f"{app_url}/calculations/new?projectId={project_id}"
+    result_data["calculation_link"] = calc_link
+
+    # Build summary
+    summary_parts = []
+    summary_parts.append(f"**Projekt vytvorený:** {project_result.get('projectNumber', '')} — {project_name}")
+
+    if customer_data:
+        status = "existujúci" if result_data.get("customer_existing") else "nový"
+        summary_parts.append(f"**Klient:** {customer_data.get('name', '')} ({status})")
+
+    # Show found products
+    templates = found.get("templates", [])
+    products = found.get("products", [])
+    categories = found.get("categories", [])
+
+    if templates or products or categories:
+        summary_parts.append(f"\n**Nájdené produkty pre \"{product_search}\":**")
+
+        if categories:
+            summary_parts.append("📂 **Kategórie (workflow):**")
+            for c in categories[:5]:
+                desc = f" — {c['description'][:80]}" if c.get("description") else ""
+                summary_parts.append(f"  • {c['name']}{desc}")
+
+        if products:
+            summary_parts.append("🔧 **Produkty (vlastná výroba):**")
+            for p in products[:5]:
+                variants = p.get("variants", [])
+                var_str = f" ({len(variants)} variantov)" if variants else ""
+                summary_parts.append(f"  • {p['name']}{var_str}")
+                for v in variants[:3]:
+                    summary_parts.append(f"    ▸ {v.get('name', '?')}")
+
+        if templates:
+            summary_parts.append("🏭 **Šablóny (nakupované):**")
+            for t in templates[:5]:
+                params = t.get("parameters", [])
+                param_str = f" [{', '.join(p['name'] for p in params[:3])}]" if params else ""
+                price = f" — {t['basePrice']}€" if t.get("basePrice") else ""
+                summary_parts.append(f"  • {t['name']}{price}{param_str}")
+    else:
+        summary_parts.append(f"\n⚠️ Pre \"{product_search}\" sa nenašli žiadne produkty v katalógu.")
+
+    summary_parts.append(f"\n**👉 [Vytvoriť kalkuláciu]({calc_link})**")
+    summary_parts.append("_Klikni na link, vyber produkt z kategórií, nakonfiguruj a ulož._")
+
+    return {
+        "success": True,
+        "summary": "\n".join(summary_parts),
+        "data": result_data,
+        "steps": steps_log,
+        "total_steps": len(steps_log),
+    }
+
+
 class KnowledgeHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -206,6 +402,167 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"error": f"Ollama nedostupná: {e}"}, 502)
 
+    def _proxy_gemini(self, method="POST"):
+        """Secure proxy to Google Gemini API — keeps API key local on Mac Studio."""
+        if not self._check_token():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        if not gemini_key:
+            self._send_json({"error": "GEMINI_API_KEY not configured"}, 500)
+            return
+        gemini_path = self.path[len("/gemini"):]
+        if gemini_path.startswith("/v1"):
+            gemini_path = gemini_path[len("/v1"):]
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/openai{gemini_path}"
+        try:
+            import requests as req
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {gemini_key}",
+            }
+            if method == "GET":
+                resp = req.get(gemini_url, headers=headers, stream=True, timeout=120)
+            else:
+                raw_body = self._read_raw_body()
+                resp = req.post(gemini_url, data=raw_body, headers=headers, stream=True, timeout=120)
+            self.send_response(resp.status_code)
+            ct = resp.headers.get("Content-Type", "application/json")
+            self.send_header("Content-Type", ct)
+            self.end_headers()
+            for chunk in resp.iter_content(chunk_size=4096):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except Exception as e:
+            logger.error(f"Gemini proxy error: {e}")
+            self._send_json({"error": f"Gemini nedostupné: {e}"}, 502)
+
+    # ── AI Router ──────────────────────────────────────────────────────
+
+    def _handle_ai_router(self, method="POST"):
+        """Central AI Router — routes to the best model based on task_type."""
+        if not self._check_token():
+            self._send_json({"error": "Unauthorized"}, 401)
+            return
+
+        sub = self.path[len("/ai-router"):]
+
+        if sub in ("", "/", "/config"):
+            cfg = load_config().get("ai_router", {})
+            self._send_json(cfg)
+            return
+
+        if sub == "/models":
+            try:
+                import requests as req
+                resp = req.get("http://localhost:11434/api/tags", timeout=5)
+                ollama_models = [m["name"] for m in resp.json().get("models", [])]
+            except Exception:
+                ollama_models = []
+            self._send_json({
+                "ollama": ollama_models,
+                "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"],
+            })
+            return
+
+        if not sub.endswith("/chat/completions"):
+            self._send_json({"error": "Supported: /ai-router/v1/chat/completions"}, 404)
+            return
+
+        if method == "GET":
+            self._send_json({"status": "ok", "endpoint": "/ai-router/v1/chat/completions"})
+            return
+
+        raw_body = self._read_raw_body()
+        try:
+            body = json.loads(raw_body)
+        except Exception:
+            self._send_json({"error": "Invalid JSON"}, 400)
+            return
+
+        task_type = body.pop("task_type", None)
+        cfg = load_config().get("ai_router", {})
+        task_models = cfg.get("task_models", {})
+
+        if task_type and task_type in task_models:
+            tc = task_models[task_type]
+            model = tc["model"]
+            provider = tc["provider"]
+        else:
+            model = body.get("model") or cfg.get("default_model", "gemini-2.0-flash")
+            provider = cfg.get("default_provider", "gemini")
+            if model.startswith("jalza") or model.startswith("qwen") or model.startswith("llama") or model.startswith("gpt-oss"):
+                provider = "ollama"
+            elif model.startswith("gemini"):
+                provider = "gemini"
+
+        body["model"] = model
+        logger.info(f"🧠 AI Router: task={task_type or 'unknown'} → {provider}/{model}")
+
+        if provider == "ollama":
+            self._route_to_ollama(body)
+        elif provider == "gemini":
+            self._route_to_gemini(body)
+        else:
+            self._send_json({"error": f"Unknown provider: {provider}"}, 400)
+
+    def _route_to_ollama(self, body: dict):
+        try:
+            import requests as req
+            resp = req.post(
+                "http://localhost:11434/v1/chat/completions",
+                json=body,
+                stream=True,
+                timeout=600,
+            )
+            self.send_response(resp.status_code)
+            ct = resp.headers.get("Content-Type", "application/json")
+            self.send_header("Content-Type", ct)
+            self.send_header("X-AI-Provider", "ollama")
+            self.send_header("X-AI-Model", body.get("model", "unknown"))
+            self.end_headers()
+            for chunk in resp.iter_content(chunk_size=4096):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except Exception as e:
+            logger.error(f"AI Router → Ollama error: {e}")
+            logger.info("AI Router: Ollama failed, trying Gemini fallback...")
+            body["model"] = load_config().get("ai_router", {}).get("default_model", "gemini-2.0-flash")
+            self._route_to_gemini(body)
+
+    def _route_to_gemini(self, body: dict):
+        gemini_key = os.environ.get("GEMINI_API_KEY", "")
+        if not gemini_key:
+            self._send_json({"error": "GEMINI_API_KEY not configured"}, 500)
+            return
+        try:
+            import requests as req
+            resp = req.post(
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {gemini_key}",
+                },
+                stream=True,
+                timeout=120,
+            )
+            self.send_response(resp.status_code)
+            ct = resp.headers.get("Content-Type", "application/json")
+            self.send_header("Content-Type", ct)
+            self.send_header("X-AI-Provider", "gemini")
+            self.send_header("X-AI-Model", body.get("model", "unknown"))
+            self.end_headers()
+            for chunk in resp.iter_content(chunk_size=4096):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except Exception as e:
+            logger.error(f"AI Router → Gemini error: {e}")
+            self._send_json({"error": f"Gemini nedostupné: {e}"}, 502)
+
     def do_GET(self):
         if self.path == "/health":
             self._send_json({"status": "ok"})
@@ -220,6 +577,14 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/ollama/"):
             self._proxy_ollama(method="GET")
+            return
+
+        if self.path.startswith("/gemini/"):
+            self._proxy_gemini(method="GET")
+            return
+
+        if self.path.startswith("/ai-router"):
+            self._handle_ai_router(method="GET")
             return
 
         if not self._check_token():
@@ -247,6 +612,16 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         # Ollama proxy — requires token, streams response
         if self.path.startswith("/ollama/"):
             self._proxy_ollama(method="POST")
+            return
+
+        # Gemini proxy — keeps API key local, streams response
+        if self.path.startswith("/gemini/"):
+            self._proxy_gemini(method="POST")
+            return
+
+        # AI Router — central task-based model routing
+        if self.path.startswith("/ai-router"):
+            self._handle_ai_router(method="POST")
             return
 
         # Whisper STT endpoint
@@ -1639,21 +2014,22 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             biz_url = os.environ.get("BUSINESS_FLOW_URL", "https://business-flow-ai.up.railway.app").rstrip("/")
             biz_token = API_TOKEN
 
+            WRITE_ACTIONS = {"create_customer", "create_project", "create_calculation", "share_calculation", "find_products"}
+
             try:
                 import urllib.request
                 import urllib.parse
 
-                params = {"action": action}
-                for k in ["status", "type", "search", "limit", "offset", "period", "id", "query"]:
-                    if k in body:
-                        params[k] = str(body[k])
-
-                if action == "search":
+                if action in WRITE_ACTIONS or action == "search":
                     req_url = f"{biz_url}/api/jalza"
-                    req_data = json.dumps({"action": "search", "query": body.get("query", ""), "type": body.get("type", "orders")}).encode()
+                    req_data = json.dumps(body).encode()
                     req = urllib.request.Request(req_url, data=req_data, method="POST")
                     req.add_header("Content-Type", "application/json")
                 else:
+                    params = {"action": action}
+                    for k in ["status", "type", "search", "limit", "offset", "period", "id", "query"]:
+                        if k in body:
+                            params[k] = str(body[k])
                     qs = urllib.parse.urlencode(params)
                     req_url = f"{biz_url}/api/jalza?{qs}"
                     req = urllib.request.Request(req_url, method="GET")
@@ -1666,6 +2042,19 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 logger.error(f"Business API error: {e}")
                 self._send_json({"error": str(e)}, 502)
+
+        elif self.path == "/business-agent":
+            body = self._read_body()
+            prompt = body.get("prompt", "")
+            if not prompt:
+                self._send_json({"error": "Missing prompt"}, 400)
+            else:
+                try:
+                    result = _run_business_agent(prompt)
+                    self._send_json(result)
+                except Exception as e:
+                    logger.error(f"Business agent error: {e}")
+                    self._send_json({"error": str(e)}, 500)
 
         elif self.path == "/email/check":
             body = self._read_body()
@@ -1719,7 +2108,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 from email_agent import list_adsun_emails
                 limit = body.get("limit", 10)
                 unseen = body.get("unseen_only", True)
-                results = list_adsun_emails(limit=limit, unseen_only=unseen)
+                today = body.get("today_only", False)
+                results = list_adsun_emails(limit=limit, unseen_only=unseen, today_only=today)
                 if isinstance(results, dict) and "error" in results:
                     self._send_json(results, 500)
                 else:
@@ -1803,7 +2193,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 from email_agent import list_juraj_emails
                 limit = body.get("limit", 10)
                 unseen = body.get("unseen_only", True)
-                results = list_juraj_emails(limit=limit, unseen_only=unseen)
+                today = body.get("today_only", False)
+                results = list_juraj_emails(limit=limit, unseen_only=unseen, today_only=today)
                 if isinstance(results, dict) and "error" in results:
                     self._send_json(results, 500)
                 else:
@@ -1874,7 +2265,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         elif self.path == "/mailboxes":
             try:
                 import json as _json
-                cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+                cfg_path = os.path.join(BASE_DIR, "config.json")
                 with open(cfg_path, "r", encoding="utf-8") as f:
                     cfg = _json.load(f)
                 mailboxes = cfg.get("mailboxes", [])
