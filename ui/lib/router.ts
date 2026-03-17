@@ -1,6 +1,6 @@
 import { getFeatures } from "./features";
 
-export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research" | "agent" | "multi" | "business";
+export type RouteType = "text" | "search" | "email" | "knowledge" | "image" | "calendar" | "research" | "agent" | "multi" | "business" | "business_action";
 
 export interface RouteResult {
   type: RouteType;
@@ -73,6 +73,9 @@ export async function detectRoute(
       }
       if (data.route === "multi") {
         return { type: "multi", model: "jalza", label: "Multi-Agent", icon: "🔗" };
+      }
+      if (data.route === "business_action") {
+        return { type: "business_action", model: "gemini-2.0-flash", label: "Business Agent", icon: "🏗️" };
       }
       if (data.route === "business") {
         return { type: "business", model: "gemini-2.0-flash", label: "Business", icon: "🏢" };
