@@ -312,6 +312,49 @@ export function useChat(activeAgent: Agent | null) {
     } catch { return null; }
   };
 
+  const quickParseEmail = (text: string): Record<string, unknown> | null => {
+    const lower = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const original = text.toLowerCase();
+
+    const isToday = /\bdnes\b|\bdnesn\w*\b|\btoday\b|\bz dneska\b|\bdnesneho\b/.test(original);
+    const isSearch = /\bhladaj\b|\bnajdi\b|\bhľadaj\b|\bnájdi\b|\bsearch\b|\bvyhladaj\b|\bvyhľadaj\b/.test(original);
+    const isSend = /\bposli\b|\bpošli\b|\bnapís\b|\bnapíš\b|\bsend\b|\bodosli\b|\bodošli\b/.test(original) && /\bmail\b|\bemail\b/.test(original);
+    const isRead = /\bprecitaj\b|\bprečítaj\b|\botvor\b|\bread\b|\bprecti\b/.test(original) && /\bmail\b|\b\d+\b/.test(original);
+    const isReply = /\bodpovedz\b|\bodpovedaj\b|\breply\b|\bodpoved\b/.test(original);
+    const isCleanup = /\bvymaz\b|\bvymaž\b|\bcleanup\b|\bspam\b|\bvycisti\b|\bvyčisti\b/.test(original);
+
+    const numMatch = original.match(/\b(\d{1,3})\b/);
+    const limitMatch = original.match(/\bposledn\w*\s+(\d+)\b|\b(\d+)\s+mail\w*\b/);
+    const filterMatch = original.match(/\bod\s+(\w+)\b|\bfrom\s+(\w+)\b/);
+
+    if (isSend) return null;
+
+    if (isRead && numMatch) {
+      return { intent: "read", number: parseInt(numMatch[1]) };
+    }
+    if (isReply && numMatch) {
+      return { intent: "reply", number: parseInt(numMatch[1]) };
+    }
+    if (isCleanup) {
+      return { intent: "cleanup" };
+    }
+    if (isSearch) {
+      const query = original.replace(/\b(hladaj|najdi|hľadaj|nájdi|search|vyhladaj|vyhľadaj|mail\w*|email\w*|v\s+mail\w*)\b/g, "").trim();
+      if (query.length > 1) return { intent: "search", query };
+    }
+
+    const result: Record<string, unknown> = { intent: "list" };
+    if (isToday) result.today = true;
+    if (limitMatch) result.limit = parseInt(limitMatch[1] || limitMatch[2]);
+    if (filterMatch) result.filter = filterMatch[1] || filterMatch[2];
+
+    if (/\bmail\b|\bemail\b|\bposta\b|\bschrank\b|\bvypis\b|\bvýpis\b|\bvypíš\b|\bzobraz\b|\bukaz\b|\bukáž\b|\bmaily\b/.test(original)) {
+      return result;
+    }
+
+    return null;
+  };
+
   const handleEmailInChat = async (
     userText: string,
     route: RouteResult,
@@ -330,11 +373,11 @@ export function useChat(activeAgent: Agent | null) {
       if (resolvedTo) {
         const draft = draftEmailRef.current;
         draftEmailRef.current = null;
-        const geminiText = await callAI(`${draft.originalText} na adresu ${resolvedTo}`);
+        const aiText = await callAI(`${draft.originalText} na adresu ${resolvedTo}`);
         let subject = draft.subject || "Bez predmetu";
         let body = draft.body || draft.originalText;
-        if (geminiText) {
-          const jm = geminiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
+        if (aiText) {
+          const jm = aiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
           if (jm) { try { const c = JSON.parse(jm[0]); if (c.subject) subject = c.subject; if (c.body) body = c.body; } catch {} }
         }
         showEmailPreview(resolvedTo, subject, body, draft.mailbox, route, updatedMessages, convId);
@@ -342,21 +385,31 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    const geminiText = await callAI(userText, mailboxes);
-    if (!geminiText) {
-      emailReply("Nepodarilo sa spojiť s Gemini. Skontroluj pripojenie.", route, updatedMessages, convId);
-      return;
-    }
+    // 1) Fast keyword parser — handles obvious commands without AI
+    let intent: Record<string, unknown> = quickParseEmail(userText) || {};
 
-    let intent: Record<string, unknown> = { intent: "list" };
-    const jsonMatch = geminiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
-    if (jsonMatch) {
-      try { intent = JSON.parse(jsonMatch[0]); } catch {}
+    // 2) If keyword parser couldn't determine intent, ask AI
+    if (!intent.intent) {
+      const aiText = await callAI(userText, mailboxes);
+      if (!aiText) {
+        emailReply("Nepodarilo sa spojiť s AI. Skontroluj pripojenie.", route, updatedMessages, convId);
+        return;
+      }
+      intent = { intent: "list" };
+      const jsonMatch = aiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
+      if (jsonMatch) {
+        try { intent = JSON.parse(jsonMatch[0]); } catch {}
+      }
+      // Even if AI didn't return today flag, detect from original text
+      const lower = userText.toLowerCase();
+      if (!intent.today && /\bdnes\b|\bdnešn\w*\b|\btoday\b/.test(lower)) {
+        intent.today = true;
+      }
     }
 
     const action = (intent.intent as string) || "list";
 
-    // Override mailbox from Gemini intent if provided
+    // Override mailbox from AI intent if provided
     if (intent.mailbox) {
       const mb = (intent.mailbox as string).toLowerCase();
       if (mailboxes.some(m => m.id === mb)) mailbox = mb;
