@@ -16,36 +16,37 @@ import { getFeatures } from "./features";
 
 function buildEmailSystemPrompt(mailboxes: Mailbox[]): string {
   const mbList = buildMailboxPromptContext(mailboxes);
-  return `Si emailový asistent J.A.L.Z.A. Dostaneš text od používateľa — často zo speech-to-text, skomolený, s preklepmi.
+  return `Si JSON parser pre emailové príkazy. VŽDY odpovedz IBA platným JSON objektom, nič iné.
 
-TVOJA ÚLOHA: Pochop ZÁMER a odpovedz v JSON.
+INTENT typy: "send", "list", "search", "read", "reply", "cleanup"
 
-INTENT:
-- "send" = chce POSLAŤ email
-- "list" = chce VIDIEŤ / skontrolovať emaily
-- "search" = chce HĽADAŤ konkrétny email
-- "cleanup" = chce VYMAZAŤ spam / staré emaily
-- "read" = chce PREČÍTAŤ konkrétny email (číslo)
-- "reply" = chce ODPOVEDAŤ na email
-- "unknown" = nejasné
+POLIA:
+- "intent": (povinné) jeden z typov vyššie
+- "today": true ak spomína "dnes", "dnešné", "dnešného dňa", "today"
+- "limit": počet emailov ak je uvedený
+- "mailbox": ID schránky (${mbList})
+- "filter": meno/firma na filtrovanie (napr. "od Petra" → "Peter")
+- "query": hľadaný výraz pre search
+- "number": číslo emailu pre read/reply
+- "to": emailová adresa príjemcu pre send
+- "subject": predmet emailu pre send
+- "body": text emailu pre send
 
-DOSTUPNÉ SCHRÁNKY:
-${mbList}
+PRÍKLADY:
+"maily z dneška" → {"intent":"list","today":true}
+"juraj maily z dneška" → {"intent":"list","today":true,"mailbox":"juraj"}
+"adsun maily" → {"intent":"list","mailbox":"adsun"}
+"posledné 3 maily" → {"intent":"list","limit":3}
+"maily od Petra" → {"intent":"list","filter":"Peter"}
+"prečítaj mail 3" → {"intent":"read","number":3}
+"hľadaj faktúra" → {"intent":"search","query":"faktúra"}
+"odpovedz na 1" → {"intent":"reply","number":1}
+"pošli mail na info@firma.sk predmet Test text Ahoj" → {"intent":"send","to":"info@firma.sk","subject":"Test","body":"Ahoj"}
+"vymaž spam" → {"intent":"cleanup"}
+"vypíš všetky maily z dneška ktoré prišli na juraj@adsun.sk" → {"intent":"list","today":true,"mailbox":"juraj"}
+"Ideš na maily z mailu juraj@adsun.sk" → {"intent":"list","mailbox":"juraj"}
 
-EXTRA POLIA (extrahuj z textu ak sú):
-- "limit": počet emailov (napr. "posledné 3" → limit:3)
-- "mailbox": ID schránky z vyššie uvedeného zoznamu. Urči podľa emailovej adresy alebo názvu schránky v správe.
-- "filter": ak chce filtrovať podľa mena/firmy/obsahu (napr. "od Mateja" → filter:"Matej")
-- "today": true ak chce dnešné
-
-ODPOVEDZ IBA JSON:
-- {"intent":"send","subject":"Test","body":"Ahoj,\\ntoto je test.\\nS pozdravom,\\nJuraj"}
-- {"intent":"list","today":true,"limit":3,"mailbox":"juraj"}
-- {"intent":"list","filter":"Matej","mailbox":"adsun"}
-- {"intent":"search","query":"faktúra"}
-- {"intent":"read","number":3}
-- {"intent":"reply","number":1}
-- {"intent":"cleanup"}`;
+DÔLEŽITÉ: Odpovedz IBA JSON. Žiadny text pred ani za JSON.`;
 }
 
 export interface EmailData {
@@ -312,49 +313,6 @@ export function useChat(activeAgent: Agent | null) {
     } catch { return null; }
   };
 
-  const quickParseEmail = (text: string): Record<string, unknown> | null => {
-    const lower = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const original = text.toLowerCase();
-
-    const isToday = /\bdnes\b|\bdnesn\w*\b|\btoday\b|\bz dneska\b|\bdnesneho\b/.test(original);
-    const isSearch = /\bhladaj\b|\bnajdi\b|\bhľadaj\b|\bnájdi\b|\bsearch\b|\bvyhladaj\b|\bvyhľadaj\b/.test(original);
-    const isSend = /\bposli\b|\bpošli\b|\bnapís\b|\bnapíš\b|\bsend\b|\bodosli\b|\bodošli\b/.test(original) && /\bmail\b|\bemail\b/.test(original);
-    const isRead = /\bprecitaj\b|\bprečítaj\b|\botvor\b|\bread\b|\bprecti\b/.test(original) && /\bmail\b|\b\d+\b/.test(original);
-    const isReply = /\bodpovedz\b|\bodpovedaj\b|\breply\b|\bodpoved\b/.test(original);
-    const isCleanup = /\bvymaz\b|\bvymaž\b|\bcleanup\b|\bspam\b|\bvycisti\b|\bvyčisti\b/.test(original);
-
-    const numMatch = original.match(/\b(\d{1,3})\b/);
-    const limitMatch = original.match(/\bposledn\w*\s+(\d+)\b|\b(\d+)\s+mail\w*\b/);
-    const filterMatch = original.match(/\bod\s+(\w+)\b|\bfrom\s+(\w+)\b/);
-
-    if (isSend) return null;
-
-    if (isRead && numMatch) {
-      return { intent: "read", number: parseInt(numMatch[1]) };
-    }
-    if (isReply && numMatch) {
-      return { intent: "reply", number: parseInt(numMatch[1]) };
-    }
-    if (isCleanup) {
-      return { intent: "cleanup" };
-    }
-    if (isSearch) {
-      const query = original.replace(/\b(hladaj|najdi|hľadaj|nájdi|search|vyhladaj|vyhľadaj|mail\w*|email\w*|v\s+mail\w*)\b/g, "").trim();
-      if (query.length > 1) return { intent: "search", query };
-    }
-
-    const result: Record<string, unknown> = { intent: "list" };
-    if (isToday) result.today = true;
-    if (limitMatch) result.limit = parseInt(limitMatch[1] || limitMatch[2]);
-    if (filterMatch) result.filter = filterMatch[1] || filterMatch[2];
-
-    if (/\bmail\b|\bemail\b|\bposta\b|\bschrank\b|\bvypis\b|\bvýpis\b|\bvypíš\b|\bzobraz\b|\bukaz\b|\bukáž\b|\bmaily\b/.test(original)) {
-      return result;
-    }
-
-    return null;
-  };
-
   const handleEmailInChat = async (
     userText: string,
     route: RouteResult,
@@ -385,37 +343,25 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    // 1) Fast keyword parser — handles obvious commands without AI
-    let intent: Record<string, unknown> = quickParseEmail(userText) || {};
+    const aiText = await callAI(userText, mailboxes);
+    if (!aiText) {
+      emailReply("Nepodarilo sa spojiť s AI. Skontroluj pripojenie.", route, updatedMessages, convId);
+      return;
+    }
 
-    // 2) If keyword parser couldn't determine intent, ask AI
-    if (!intent.intent) {
-      const aiText = await callAI(userText, mailboxes);
-      if (!aiText) {
-        emailReply("Nepodarilo sa spojiť s AI. Skontroluj pripojenie.", route, updatedMessages, convId);
-        return;
-      }
-      intent = { intent: "list" };
-      const jsonMatch = aiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
-      if (jsonMatch) {
-        try { intent = JSON.parse(jsonMatch[0]); } catch {}
-      }
-      // Even if AI didn't return today flag, detect from original text
-      const lower = userText.toLowerCase();
-      if (!intent.today && /\bdnes\b|\bdnešn\w*\b|\btoday\b/.test(lower)) {
-        intent.today = true;
-      }
+    let intent: Record<string, unknown> = { intent: "list" };
+    const jsonMatch = aiText.match(/\{[\s\S]*?"intent"[\s\S]*?\}/);
+    if (jsonMatch) {
+      try { intent = JSON.parse(jsonMatch[0]); } catch {}
     }
 
     const action = (intent.intent as string) || "list";
 
-    // Override mailbox from AI intent if provided
     if (intent.mailbox) {
       const mb = (intent.mailbox as string).toLowerCase();
       if (mailboxes.some(m => m.id === mb)) mailbox = mb;
     }
 
-    // Remember last used mailbox for follow-up commands like "prečítaj mail 1"
     lastMailboxRef.current = mailbox;
 
     // ── SEND ──
