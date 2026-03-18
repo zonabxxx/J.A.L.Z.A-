@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GEMINI_API_KEY } from "@/lib/config";
-import { getOllamaUrl, ollamaHeaders, isOllamaLocal } from "@/lib/ollama-client";
+import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
 
 const CLASSIFY_PROMPT = `Si inteligentný router pre AI asistenta J.A.L.Z.A. Analyzuj používateľovu správu a urči kam ju nasmerovať.
 
@@ -100,13 +100,9 @@ export async function POST(req: NextRequest) {
     const { message } = await req.json();
     if (!message) return NextResponse.json({ route: "chat" });
 
-    let result: string | null = null;
-    if (isOllamaLocal) {
-      result = await classifyWithOllama(message);
-      if (!result) result = await classifyWithGemini(message);
-    } else {
+    let result = await classifyWithOllama(message);
+    if (!result) {
       result = await classifyWithGemini(message);
-      if (!result) result = await classifyWithOllama(message);
     }
 
     return NextResponse.json({ route: parseRoute(result) });
