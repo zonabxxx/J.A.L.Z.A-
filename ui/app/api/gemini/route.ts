@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { GEMINI_API_KEY } from "@/lib/config";
-import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
+import { getOllamaUrl, ollamaHeaders, isOllamaLocal } from "@/lib/ollama-client";
 
 const GEMINI_MODEL = "gemini-2.0-flash";
 const OLLAMA_MODEL = "jalza";
@@ -73,13 +73,14 @@ export async function POST(req: NextRequest) {
   const { prompt, systemPrompt, preferCloud } = await req.json();
 
   let text: string | null = null;
+  const localFirst = isOllamaLocal && !preferCloud;
 
-  if (preferCloud) {
-    text = await tryGemini(prompt, systemPrompt);
-    if (!text) text = await tryOllama(prompt, systemPrompt);
-  } else {
+  if (localFirst) {
     text = await tryOllama(prompt, systemPrompt);
     if (!text) text = await tryGemini(prompt, systemPrompt);
+  } else {
+    text = await tryGemini(prompt, systemPrompt);
+    if (!text) text = await tryOllama(prompt, systemPrompt);
   }
 
   if (!text) {

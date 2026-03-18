@@ -3,6 +3,8 @@ import { OLLAMA_URL, JALZA_API_TOKEN, KNOWLEDGE_API_URL } from "./config";
 const USE_PROXY = OLLAMA_URL.includes("localhost") === false
   || process.env.OLLAMA_PROXY === "true";
 
+export const isOllamaLocal = !USE_PROXY;
+
 export function getOllamaUrl(path: string): string {
   if (USE_PROXY) {
     return `${KNOWLEDGE_API_URL}/ollama${path}`;
