@@ -178,7 +178,7 @@ def _gemini_call(system: str, user_msg: str) -> str:
         raise ValueError("GEMINI_API_KEY not set")
 
     import urllib.request
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_key}"
     payload = {
         "contents": [
             {"role": "user", "parts": [{"text": f"{system}\n\n{user_msg}"}]},
@@ -462,7 +462,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 ollama_models = []
             self._send_json({
                 "ollama": ollama_models,
-                "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"],
+                "gemini": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash"],
             })
             return
 
@@ -490,7 +490,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             model = tc["model"]
             provider = tc["provider"]
         else:
-            model = body.get("model") or cfg.get("default_model", "gemini-2.0-flash")
+            model = body.get("model") or cfg.get("default_model", "gemini-2.5-flash")
             provider = cfg.get("default_provider", "gemini")
             if model.startswith("jalza") or model.startswith("qwen") or model.startswith("llama") or model.startswith("gpt-oss"):
                 provider = "ollama"
@@ -529,7 +529,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"AI Router → Ollama error: {e}")
             logger.info("AI Router: Ollama failed, trying Gemini fallback...")
-            body["model"] = load_config().get("ai_router", {}).get("default_model", "gemini-2.0-flash")
+            body["model"] = load_config().get("ai_router", {}).get("default_model", "gemini-2.5-flash")
             self._route_to_gemini(body)
 
     def _route_to_gemini(self, body: dict):
@@ -622,6 +622,169 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
         # AI Router — central task-based model routing
         if self.path.startswith("/ai-router"):
             self._handle_ai_router(method="POST")
+            return
+
+        # AI Web Search — Gemini with google_search grounding
+        if self.path == "/ai/web-search":
+            if not self._check_token():
+                self._send_json({"error": "Unauthorized"}, 401)
+                return
+            body = self._read_body()
+            messages = body.get("messages", [])
+            temperature = body.get("temperature", 0.7)
+            max_tokens = body.get("max_tokens", 2048)
+            stream = body.get("stream", False)
+
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            if not gemini_key:
+                self._send_json({"error": "GEMINI_API_KEY not configured"}, 500)
+                return
+
+            contents = []
+            for m in messages:
+                role = m.get("role", "user")
+                if role == "system":
+                    contents.append({"role": "user", "parts": [{"text": m["content"]}]})
+                    contents.append({"role": "model", "parts": [{"text": "Rozumiem."}]})
+                elif role == "assistant":
+                    contents.append({"role": "model", "parts": [{"text": m["content"]}]})
+                else:
+                    contents.append({"role": "user", "parts": [{"text": m["content"]}]})
+
+            try:
+                import requests as req
+                endpoint = "streamGenerateContent?alt=sse" if stream else "generateContent"
+                resp = req.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:{endpoint}&key={gemini_key}",
+                    json={
+                        "contents": contents,
+                        "tools": [{"google_search": {}}],
+                        "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+                    },
+                    stream=stream,
+                    timeout=30,
+                )
+                if stream:
+                    self.send_response(resp.status_code)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    for chunk in resp.iter_content(chunk_size=4096):
+                        if chunk:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                else:
+                    data = resp.json()
+                    text_parts = []
+                    for cand in data.get("candidates", []):
+                        for part in cand.get("content", {}).get("parts", []):
+                            if "text" in part:
+                                text_parts.append(part["text"])
+                    self._send_json({"text": "".join(text_parts)})
+            except Exception as e:
+                logger.error(f"AI Web Search error: {e}")
+                self._send_json({"error": str(e)}, 502)
+            return
+
+        # AI Image Generation — Gemini native image model
+        if self.path == "/ai/generate-image":
+            if not self._check_token():
+                self._send_json({"error": "Unauthorized"}, 401)
+                return
+            body = self._read_body()
+            prompt = body.get("prompt", "")
+            input_image = body.get("image")
+
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            if not gemini_key:
+                self._send_json({"error": "GEMINI_API_KEY not configured"}, 500)
+                return
+            if not prompt:
+                self._send_json({"error": "Missing prompt"}, 400)
+                return
+
+            parts = []
+            if input_image:
+                import base64 as b64mod
+                raw = input_image
+                mime = "image/png"
+                if raw.startswith("data:"):
+                    header, raw = raw.split(",", 1)
+                    mime = header.split(":")[1].split(";")[0]
+                parts.append({"inlineData": {"mimeType": mime, "data": raw}})
+                parts.append({"text": f"Edit this image: {prompt}"})
+            else:
+                parts.append({"text": f"Generate an image: {prompt}. Be creative and produce high quality results."})
+
+            try:
+                import requests as req
+                resp = req.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={gemini_key}",
+                    json={
+                        "contents": [{"parts": parts}],
+                        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "temperature": 1},
+                    },
+                    timeout=90,
+                )
+                if not resp.ok:
+                    self._send_json({"error": f"Gemini {resp.status_code}: {resp.text[:500]}"}, 502)
+                    return
+
+                data = resp.json()
+                response_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                text = ""
+                image_b64 = ""
+                mime_type = "image/png"
+                for p in response_parts:
+                    if "text" in p:
+                        text += p["text"]
+                    if "inlineData" in p:
+                        image_b64 = p["inlineData"]["data"]
+                        mime_type = p["inlineData"].get("mimeType", "image/png")
+
+                if not image_b64:
+                    self._send_json({"error": "Gemini nevrátil obrázok.", "text": text or None}, 422)
+                    return
+
+                self._send_json({"image": f"data:{mime_type};base64,{image_b64}", "text": text})
+            except Exception as e:
+                logger.error(f"AI Image Generation error: {e}")
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        # AI Vision — route vision requests through Ollama
+        if self.path == "/ai/vision":
+            if not self._check_token():
+                self._send_json({"error": "Unauthorized"}, 401)
+                return
+            body = self._read_body()
+            prompt = body.get("prompt", "Čo vidíš na tomto obrázku? Odpovedaj po slovensky. Ak vidíš text, prepíš ho.")
+            images = body.get("images", [])
+            stream = body.get("stream", True)
+
+            try:
+                import requests as req
+                resp = req.post(
+                    "http://localhost:11434/api/chat",
+                    json={
+                        "model": "llama3.2-vision:11b",
+                        "messages": [{"role": "user", "content": prompt, "images": images}],
+                        "stream": stream,
+                    },
+                    stream=stream,
+                    timeout=120,
+                )
+                self.send_response(resp.status_code)
+                ct = resp.headers.get("Content-Type", "application/json")
+                self.send_header("Content-Type", ct)
+                self.end_headers()
+                for chunk in resp.iter_content(chunk_size=4096):
+                    if chunk:
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+            except Exception as e:
+                logger.error(f"AI Vision error: {e}")
+                self._send_json({"error": str(e)}, 502)
             return
 
         # Whisper STT endpoint
@@ -1190,7 +1353,7 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 "icon": "🔍",
                 "status": "connected",
                 "provider": "Google Gemini",
-                "account": "gemini-2.0-flash",
+                "account": "gemini-2.5-flash",
                 "capabilities": ["vyhľadávanie na webe", "aktuálne informácie", "novinky"],
                 "config": {},
             })

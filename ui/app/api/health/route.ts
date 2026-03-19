@@ -1,5 +1,4 @@
-import { GEMINI_API_KEY, KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "@/lib/config";
-import { getOllamaUrl, ollamaHeaders } from "@/lib/ollama-client";
+import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "@/lib/config";
 
 interface ServiceStatus {
   id: string;
@@ -27,35 +26,40 @@ async function checkService(
 }
 
 export async function GET() {
+  const apiHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Bypass-Tunnel-Reminder": "yes",
+  };
+  if (JALZA_API_TOKEN) apiHeaders["X-API-Token"] = JALZA_API_TOKEN;
+
   const checks = await Promise.all([
     checkService("ollama", async () => {
-      const res = await fetch(getOllamaUrl("/api/tags"), {
-        headers: ollamaHeaders(),
+      const res = await fetch(`${KNOWLEDGE_API_URL}/ai-router/models`, {
+        headers: apiHeaders,
         signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) return { ok: false };
       const data = await res.json();
-      const models = (data.models || []).map((m: { name: string }) => m.name);
-      return { ok: true, details: models.join(", ") };
+      const models = (data.ollama || []).join(", ");
+      return { ok: data.ollama?.length > 0, details: models };
     }),
 
     checkService("knowledge_api", async () => {
-      const headers: Record<string, string> = {};
-      if (JALZA_API_TOKEN) headers["X-API-Token"] = JALZA_API_TOKEN;
       const res = await fetch(`${KNOWLEDGE_API_URL}/agents`, {
-        headers,
+        headers: apiHeaders,
         signal: AbortSignal.timeout(5000),
       });
       return { ok: res.ok };
     }),
 
     checkService("gemini", async () => {
-      if (!GEMINI_API_KEY) return { ok: false, details: "No API key" };
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      return { ok: res.ok, details: res.ok ? undefined : `HTTP ${res.status}` };
+      const res = await fetch(`${KNOWLEDGE_API_URL}/ai-router/models`, {
+        headers: apiHeaders,
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return { ok: false };
+      const data = await res.json();
+      return { ok: data.gemini?.length > 0, details: data.gemini?.join(", ") };
     }),
   ]);
 

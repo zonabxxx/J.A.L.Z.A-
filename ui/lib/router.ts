@@ -51,7 +51,7 @@ export async function detectRoute(
       if (data.route === "search" && features.webSearch) {
         return {
           type: "search",
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash",
           label: "Web Search",
           icon: "🔍",
         };
@@ -63,10 +63,10 @@ export async function detectRoute(
         return { type: "image", model: "gemini-image", label: "Obrázok", icon: "🎨" };
       }
       if (data.route === "calendar") {
-        return { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+        return { type: "calendar", model: "gemini-2.5-flash", label: "Kalendár", icon: "📅" };
       }
       if (data.route === "research") {
-        return { type: "research", model: "gemini-2.0-flash", label: "Research", icon: "🔬" };
+        return { type: "research", model: "gemini-2.5-flash", label: "Research", icon: "🔬" };
       }
       if (data.route === "agent") {
         return { type: "agent", model: "jalza", label: "Agent", icon: "🤖" };
@@ -75,10 +75,10 @@ export async function detectRoute(
         return { type: "multi", model: "jalza", label: "Multi-Agent", icon: "🔗" };
       }
       if (data.route === "business_action") {
-        return { type: "business_action", model: "gemini-2.0-flash", label: "Business Agent", icon: "🏗️" };
+        return { type: "business_action", model: "gemini-2.5-flash", label: "Business Agent", icon: "🏗️" };
       }
       if (data.route === "business") {
-        return { type: "business", model: "gemini-2.0-flash", label: "Business", icon: "🏢" };
+        return { type: "business", model: "gemini-2.5-flash", label: "Business", icon: "🏢" };
       }
     }
   } catch {

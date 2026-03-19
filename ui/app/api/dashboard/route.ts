@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { backendPost } from "@/lib/api-client";
-import { GEMINI_API_KEY } from "@/lib/config";
+import { backendPost, jalzaAIText } from "@/lib/api-client";
 
 export async function GET() {
   const results: Record<string, unknown> = {};
@@ -41,45 +40,27 @@ export async function GET() {
   const jurajEmails = (results.emails_juraj as { emails?: unknown[] })?.emails || [];
   const activeTasks = (results.tasks as unknown[]) || [];
 
-  // Generate summary with Gemini
   let summary = "";
-  if (GEMINI_API_KEY) {
-    try {
-      const contextParts = [];
-      if (calEvents.length > 0) contextParts.push(`Dnešné udalosti: ${JSON.stringify(calEvents).slice(0, 1000)}`);
-      if (adsunEmails.length > 0) contextParts.push(`ADSUN emaily: ${adsunEmails.length} nových`);
-      if (jurajEmails.length > 0) contextParts.push(`Juraj emaily: ${jurajEmails.length} nových`);
-      if (activeTasks.length > 0) contextParts.push(`Aktívne úlohy: ${activeTasks.length}`);
+  try {
+    const contextParts = [];
+    if (calEvents.length > 0) contextParts.push(`Dnešné udalosti: ${JSON.stringify(calEvents).slice(0, 1000)}`);
+    if (adsunEmails.length > 0) contextParts.push(`ADSUN emaily: ${adsunEmails.length} nových`);
+    if (jurajEmails.length > 0) contextParts.push(`Juraj emaily: ${jurajEmails.length} nových`);
+    if (activeTasks.length > 0) contextParts.push(`Aktívne úlohy: ${activeTasks.length}`);
 
-      if (contextParts.length > 0) {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: `Si J.A.L.Z.A., osobný AI asistent. Vytvor stručný ranný prehľad pre Juraja (po slovensky, max 200 slov, markdown).
-
-${contextParts.join("\n")}
-
-Formát: krátke zhrnutie dňa, dôležité stretnutia, emaily, úlohy. Buď stručný a vecný.`,
-                }],
-              }],
-              generationConfig: { temperature: 0.5, maxOutputTokens: 500 },
-            }),
-            signal: AbortSignal.timeout(15000),
-          }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          summary = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        }
-      }
-    } catch {
-      // no summary
+    if (contextParts.length > 0) {
+      summary = await jalzaAIText({
+        messages: [{
+          role: "user",
+          content: `Si J.A.L.Z.A., osobný AI asistent. Vytvor stručný ranný prehľad pre Juraja (po slovensky, max 200 slov, markdown).\n\n${contextParts.join("\n")}\n\nFormát: krátke zhrnutie dňa, dôležité stretnutia, emaily, úlohy. Buď stručný a vecný.`,
+        }],
+        task_type: "summary",
+        temperature: 0.5,
+        max_tokens: 500,
+      });
     }
+  } catch {
+    // no summary
   }
 
   return NextResponse.json({

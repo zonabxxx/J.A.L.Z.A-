@@ -12,7 +12,7 @@ const PERIOD_LABELS: Record<Period, string> = {
 
 const MODEL_COLORS: Record<string, string> = {
   "jalza": "bg-purple-500",
-  "gemini-2.0-flash": "bg-emerald-500",
+  "gemini-2.5-flash": "bg-emerald-500",
   "gemini-2.5-flash-preview-05-20": "bg-cyan-500",
   "gemini-2.5-pro-preview-05-06": "bg-violet-500",
   "llama3.2-vision:11b": "bg-orange-500",
@@ -20,7 +20,7 @@ const MODEL_COLORS: Record<string, string> = {
 
 const MODEL_NAMES: Record<string, string> = {
   "jalza": "J.A.L.Z.A.",
-  "gemini-2.0-flash": "Gemini 2.0 Flash",
+  "gemini-2.5-flash": "Gemini 2.5 Flash",
   "gemini-2.5-flash-preview-05-20": "Gemini 2.5 Flash",
   "gemini-2.5-pro-preview-05-06": "Gemini 2.5 Pro",
   "llama3.2-vision:11b": "Vision (llama3.2)",

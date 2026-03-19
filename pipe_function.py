@@ -22,10 +22,10 @@ class Pipe:
         text_model: str = Field(default="jalza", description="Lokálny model pre text")
         vision_model: str = Field(default="qwen2.5vl:3b", description="Lokálny model pre obrázky")
         gemini_api_key: str = Field(
-            default="AIzaSyARjKGPfJ5-bHpDSQchCVO8za2yRGpwSiE",
+            default="AIzaSyBQrBP8aaXBXftysO4OrRfrh-bh7PENX2s",
             description="Gemini API kľúč (len pre web search)",
         )
-        gemini_model: str = Field(default="gemini-2.0-flash", description="Gemini model")
+        gemini_model: str = Field(default="gemini-2.5-flash", description="Gemini model")
         ollama_url: str = Field(
             default="http://host.docker.internal:11434", description="Ollama API URL"
         )

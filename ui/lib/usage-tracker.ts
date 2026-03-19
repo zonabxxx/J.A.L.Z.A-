@@ -1,5 +1,5 @@
 const PRICING: Record<string, { input: number; output: number }> = {
-  "gemini-2.0-flash": { input: 0.10 / 1_000_000, output: 0.40 / 1_000_000 },
+  "gemini-2.5-flash": { input: 0.15 / 1_000_000, output: 0.60 / 1_000_000 },
   "gemini-2.5-flash-preview-05-20": { input: 0.15 / 1_000_000, output: 3.50 / 1_000_000 },
   "gemini-2.5-pro-preview-05-06": { input: 1.25 / 1_000_000, output: 10.00 / 1_000_000 },
   "jalza": { input: 0, output: 0 },

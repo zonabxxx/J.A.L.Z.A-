@@ -651,7 +651,7 @@ Odpovedz IBA JSON, nič iné.`;
 
   const readEmailById = useCallback(
     async (emailId: string, mailbox: string) => {
-      const route: RouteResult = { type: "email", model: "gemini-2.0-flash", label: "Email · jalza", icon: "📧" };
+      const route: RouteResult = { type: "email", model: "gemini-2.5-flash", label: "Email · jalza", icon: "📧" };
       setCurrentRoute(route);
       setIsStreaming(true);
 
@@ -864,7 +864,7 @@ Odpovedz IBA JSON, nič iné.`;
       // If there's a pending calendar event, route follow-ups to calendar
       const hasPendingCalendar = messages.some(m => m.pendingCalendarEvent);
       if (hasPendingCalendar) {
-        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.5-flash", label: "Kalendár", icon: "📅" };
         setCurrentRoute(calRoute);
         try {
           await handleCalendarInChat(content, calRoute, updated, conversationId);
@@ -879,7 +879,7 @@ Odpovedz IBA JSON, nič iné.`;
       // If last assistant message was calendar-related, keep routing to calendar
       const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant");
       if (lastAssistantMsg?.calendarEvents && /ano|áno|ok|pridaj|potvrď|potvrd|zruš|zrus|zmen|zmeň|uprav|presuň|presun|yes|sure/i.test(lowerTrimmed)) {
-        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+        const calRoute: RouteResult = { type: "calendar", model: "gemini-2.5-flash", label: "Kalendár", icon: "📅" };
         setCurrentRoute(calRoute);
         try {
           await handleCalendarInChat(content, calRoute, updated, conversationId);
@@ -1032,7 +1032,7 @@ Odpovedz IBA JSON, nič iné.`;
             const finalMsgs = [...updated, resultMsg];
             setMessages(finalMsgs);
             debouncedSave(finalMsgs, conversationId);
-            trackUsage({ model: "gemini-2.0-flash", route: "business_action", outputText: resultContent });
+            trackUsage({ model: "gemini-2.5-flash", route: "business_action", outputText: resultContent });
           } catch {
             setMessages([...updated, { role: "assistant", content: "❌ Business agent zlyhал.", route }]);
           } finally {
@@ -1085,7 +1085,7 @@ Otázka: ${content}`,
             const finalMsgs = [...updated, resultMsg];
             setMessages(finalMsgs);
             debouncedSave(finalMsgs, conversationId);
-            trackUsage({ model: "gemini-2.0-flash", route: "business", outputText: answer });
+            trackUsage({ model: "gemini-2.5-flash", route: "business", outputText: answer });
           } catch {
             setMessages([...updated, { role: "assistant", content: "❌ Nepodarilo sa načítať business dáta.", route }]);
           } finally {
@@ -1467,7 +1467,7 @@ Otázka: ${content}`,
 
   const confirmCalendarEvent = useCallback(
     async (event: PendingCalendarEvent) => {
-      const route: RouteResult = { type: "calendar", model: "gemini-2.0-flash", label: "Kalendár", icon: "📅" };
+      const route: RouteResult = { type: "calendar", model: "gemini-2.5-flash", label: "Kalendár", icon: "📅" };
 
       const msgIdx = messages.findIndex(m => m.pendingCalendarEvent);
       if (msgIdx === -1) return;
