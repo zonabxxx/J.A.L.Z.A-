@@ -22,7 +22,7 @@ class Pipe:
         text_model: str = Field(default="jalza", description="Lokálny model pre text")
         vision_model: str = Field(default="qwen2.5vl:3b", description="Lokálny model pre obrázky")
         gemini_api_key: str = Field(
-            default="AIzaSyBQrBP8aaXBXftysO4OrRfrh-bh7PENX2s",
+            default_factory=lambda: os.environ.get("GEMINI_API_KEY", ""),
             description="Gemini API kľúč (len pre web search)",
         )
         gemini_model: str = Field(default="gemini-2.5-flash", description="Gemini model")
