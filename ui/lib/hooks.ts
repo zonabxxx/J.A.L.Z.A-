@@ -934,6 +934,10 @@ Odpovedz IBA JSON, nič iné.`;
         pendingEmailRef.current = null;
       }
 
+      // Show thinking indicator while classify runs
+      const thinkingMsg: ChatMessage = { role: "assistant", content: "" };
+      setMessages([...updated, thinkingMsg]);
+
       let route = await detectRoute(
         content,
         !!activeAgent,
@@ -950,6 +954,10 @@ Odpovedz IBA JSON, nič iné.`;
       }
 
       setCurrentRoute(route);
+
+      // Update thinking indicator with route context
+      const routeLoadingMsg: ChatMessage = { role: "assistant", content: "", route };
+      setMessages([...updated, routeLoadingMsg]);
 
       try {
         let plainMessages = updated.map(({ role, content: c }) => ({

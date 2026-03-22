@@ -466,11 +466,22 @@ export default function Chat({
                     }`}
                   >
                     {!msg.content ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" />
-                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.15s]" />
-                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.3s]" />
-                        <span className="text-xs text-zinc-500 ml-1">Premyslam...</span>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" />
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.15s]" />
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.3s]" />
+                        </span>
+                        <span className="text-xs text-zinc-400">
+                          {msg.route?.type === "email" ? "📧 Načítavam emaily…"
+                            : msg.route?.type === "calendar" ? "📅 Kontrolujem kalendár…"
+                            : msg.route?.type === "search" ? "🔍 Hľadám na webe…"
+                            : msg.route?.type === "business" ? "🏢 Načítavam business dáta…"
+                            : msg.route?.type === "business_action" ? "🏗️ Spracovávam požiadavku…"
+                            : msg.route?.type === "image" ? "🎨 Generujem obrázok…"
+                            : msg.route?.type === "research" ? "🔬 Robím research…"
+                            : "Premýšľam…"}
+                        </span>
                       </span>
                     ) : msg.role === "user" ? (
                       msg.content
