@@ -1,0 +1,18 @@
+=== STEP 1-2: NAVIGATE & LOGIN ===
+Logged in successfully
+
+=== STEP 3-4: OPEN SETTINGS MODAL ===
+Settings modal opened, full screenshot taken
+
+=== STEP 5-7: CHECK CONTENT & PUSH TOGGLE ===
+Profile visible: YES
+Feature toggles visible: YES
+Push notification toggle visible: YES
+Push toggle: attempting click...
+Push toggle clicked successfully
+
+=== STEP 8-9: ZNALOSTNÉ BÁZY TAB ===
+Knowledge base agents listed: YES
+
+=== FULL REPORT ===
+Screenshots: step1-initial, step2-after-login, step4-settings-modal-full, step7-after-push-toggle, step9-znalostne-bazy

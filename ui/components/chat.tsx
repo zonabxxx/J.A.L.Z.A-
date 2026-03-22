@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Agent } from "@/lib/types";
 import type { ChatMessage } from "@/lib/hooks";
@@ -12,6 +12,71 @@ import EmailCards from "./email-cards";
 import CalendarCards from "./calendar-cards";
 import CalendarConfirmCard from "./calendar-confirm-card";
 import type { PendingCalendarEvent } from "@/lib/hooks";
+
+const SUGGESTED_PROMPTS = [
+  { icon: "📧", text: "Ukáž mi nové emaily", category: "email" },
+  { icon: "📅", text: "Čo mám dnes v kalendári?", category: "calendar" },
+  { icon: "🔍", text: "Vyhľadaj na webe", category: "search" },
+  { icon: "📊", text: "Aké sú dnešné správy z biznisu?", category: "business" },
+  { icon: "🏢", text: "Adsun maily", category: "email" },
+  { icon: "📝", text: "Napíš email", category: "email" },
+];
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [text]);
+  return (
+    <button
+      onClick={handleCopy}
+      className="opacity-0 group-hover:opacity-100 transition-all duration-200 text-zinc-500 hover:text-zinc-300 p-1 rounded-md hover:bg-zinc-700/50"
+      title="Kopírovať"
+    >
+      {copied ? (
+        <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function CodeBlock({ children, className }: { children: React.ReactNode; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const isBlock = className?.includes("language-");
+  const lang = className?.replace("language-", "") || "";
+  const code = String(children).replace(/\n$/, "");
+
+  if (!isBlock) {
+    return <code className="bg-zinc-700/60 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-400">{children}</code>;
+  }
+
+  return (
+    <div className="relative group/code my-2">
+      <div className="flex items-center justify-between bg-zinc-950 rounded-t-lg px-3 py-1.5 border border-zinc-700/50 border-b-0">
+        <span className="text-[10px] text-zinc-500 font-mono uppercase">{lang || "code"}</span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
+        >
+          {copied ? (
+            <><svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg> Skopírované</>
+          ) : (
+            <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" /></svg> Kopírovať</>
+          )}
+        </button>
+      </div>
+      <code className="block bg-zinc-950 rounded-b-lg px-3 py-2.5 text-xs font-mono overflow-x-auto text-emerald-400 border border-zinc-700/50 border-t-0">{children}</code>
+    </div>
+  );
+}
 
 interface Props {
   messages: ChatMessage[];
@@ -263,42 +328,50 @@ export default function Chat({
 
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-zinc-600">
-            <div className="text-center max-w-md px-4">
-              <div className="text-4xl mb-4">🤖</div>
-              <p className="text-base md:text-lg font-medium">
+          <div className="flex items-center justify-center h-full text-zinc-600 animate-fade-in">
+            <div className="text-center max-w-lg px-4">
+              <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-zinc-700/50 flex items-center justify-center">
+                <span className="text-3xl">J</span>
+              </div>
+              <p className="text-lg md:text-xl font-semibold text-zinc-200">
                 {activeAgent
-                  ? `Opýtaj sa na ${activeAgent.name}`
-                  : "Ahoj, som J.A.L.Z.A."}
+                  ? activeAgent.name
+                  : "Ahoj, Juraj"}
               </p>
-              <p className="text-xs md:text-sm mt-2 text-zinc-500">
-                Model sa prepína automaticky podľa kontextu:
+              <p className="text-sm mt-1.5 text-zinc-500">
+                {activeAgent
+                  ? `${activeAgent.sources} zdrojov v znalostnej databáze`
+                  : "Ako ti dnes pomozem?"}
               </p>
-              <div className="flex flex-wrap justify-center gap-1.5 md:gap-2 mt-3">
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-purple-600/10 text-purple-400">
-                  🧠 jalza — lokálny
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-cyan-600/10 text-cyan-400">
-                  ⚡ Gemini Flash — rýchly
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-violet-600/10 text-violet-400">
-                  💎 Gemini Pro — premium
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-emerald-600/10 text-emerald-400">
-                  🔍 Web Search
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-amber-600/10 text-amber-400">
-                  📚 RAG agenti
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-blue-600/10 text-blue-400">
-                  📧 Email
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-pink-600/10 text-pink-400">
-                  🎨 Obrázky
-                </span>
-                <span className="text-[10px] md:text-[11px] px-2 py-1 rounded-full bg-teal-600/10 text-teal-400">
-                  📅 Kalendár
-                </span>
+
+              <div className="grid grid-cols-2 gap-2 mt-6">
+                {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onSend(prompt.text)}
+                    className="text-left px-3 py-2.5 rounded-xl border border-zinc-700/50 bg-zinc-800/30 hover:bg-zinc-800 hover:border-zinc-600 transition-all duration-200 group/prompt"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-base mt-0.5 shrink-0">{prompt.icon}</span>
+                      <span className="text-xs text-zinc-400 group-hover/prompt:text-zinc-200 transition-colors leading-relaxed">{prompt.text}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-1.5 mt-5">
+                {[
+                  { label: "jalza", color: "purple" },
+                  { label: "Gemini Flash", color: "cyan" },
+                  { label: "Web Search", color: "emerald" },
+                  { label: "Email", color: "blue" },
+                  { label: "Kalendar", color: "teal" },
+                  { label: "RAG", color: "amber" },
+                ].map((tag) => (
+                  <span key={tag.label} className={`text-[10px] px-2 py-0.5 rounded-full bg-${tag.color}-600/10 text-${tag.color}-400`}>
+                    {tag.label}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -307,7 +380,8 @@ export default function Chat({
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex animate-msg-in ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            style={{ animationDelay: `${Math.min(i * 30, 200)}ms` }}
           >
             <div className={`max-w-[85%] md:max-w-[75%] ${msg.role === "user" ? "" : "space-y-1"}`}>
               {msg.role === "assistant" && msg.route && (
@@ -390,14 +464,15 @@ export default function Chat({
                     className={`rounded-2xl px-3.5 md:px-4 py-2.5 text-sm leading-relaxed ${
                       msg.role === "user"
                         ? "bg-blue-600 text-white whitespace-pre-wrap"
-                        : "bg-zinc-800 text-zinc-200"
+                        : "bg-zinc-800/80 text-zinc-200 border border-zinc-700/30"
                     }`}
                   >
                     {!msg.content ? (
-                      <span className="inline-flex gap-1">
-                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" />
-                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.1s]" />
-                        <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot" />
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.15s]" />
+                        <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse-dot [animation-delay:0.3s]" />
+                        <span className="text-xs text-zinc-500 ml-1">Premyslam...</span>
                       </span>
                     ) : msg.role === "user" ? (
                       msg.content
@@ -405,36 +480,38 @@ export default function Chat({
                       <ReactMarkdown
                         components={{
                           a: ({ href, children }) => (
-                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline underline-offset-2 break-all">
+                            <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline underline-offset-2 decoration-blue-400/30 hover:decoration-blue-300 break-all transition-colors">
                               {children}
                             </a>
                           ),
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                          li: ({ children }) => <li>{children}</li>,
-                          strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+                          p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2.5 space-y-1.5">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2.5 space-y-1.5">{children}</ol>,
+                          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                          strong: ({ children }) => <strong className="font-semibold text-zinc-50">{children}</strong>,
                           em: ({ children }) => <em className="italic text-zinc-300">{children}</em>,
-                          code: ({ children, className }) => {
-                            const isBlock = className?.includes("language-");
-                            return isBlock ? (
-                              <code className="block bg-zinc-900 rounded-lg px-3 py-2 my-2 text-xs font-mono overflow-x-auto text-emerald-400">{children}</code>
-                            ) : (
-                              <code className="bg-zinc-700/60 px-1.5 py-0.5 rounded text-xs font-mono text-emerald-400">{children}</code>
-                            );
-                          },
-                          pre: ({ children }) => <pre className="my-2">{children}</pre>,
-                          h1: ({ children }) => <h1 className="text-base font-bold mb-2 text-zinc-100">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-sm font-bold mb-1.5 text-zinc-100">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 text-zinc-200">{children}</h3>,
-                          blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-600 pl-3 my-2 text-zinc-400 italic">{children}</blockquote>,
-                          hr: () => <hr className="border-zinc-700 my-3" />,
+                          code: ({ children, className: cn }) => <CodeBlock className={cn}>{children}</CodeBlock>,
+                          pre: ({ children }) => <>{children}</>,
+                          h1: ({ children }) => <h1 className="text-base font-bold mb-2 mt-3 first:mt-0 text-zinc-50 border-b border-zinc-700/50 pb-1">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-sm font-bold mb-1.5 mt-2.5 first:mt-0 text-zinc-100">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0 text-zinc-200">{children}</h3>,
+                          blockquote: ({ children }) => <blockquote className="border-l-2 border-blue-500/40 pl-3 my-2 text-zinc-400 italic">{children}</blockquote>,
+                          hr: () => <hr className="border-zinc-700/50 my-3" />,
+                          table: ({ children }) => <div className="overflow-x-auto my-2"><table className="min-w-full text-xs border border-zinc-700/50 rounded-lg overflow-hidden">{children}</table></div>,
+                          thead: ({ children }) => <thead className="bg-zinc-800/80">{children}</thead>,
+                          th: ({ children }) => <th className="px-3 py-1.5 text-left font-semibold text-zinc-300 border-b border-zinc-700/50">{children}</th>,
+                          td: ({ children }) => <td className="px-3 py-1.5 border-b border-zinc-800/50 text-zinc-400">{children}</td>,
                         }}
                       >
                         {msg.content}
                       </ReactMarkdown>
                     )}
                   </div>
+                  {msg.role === "assistant" && msg.content && !isStreaming && (
+                    <div className="absolute -bottom-1 -right-1 flex items-center gap-0.5">
+                      <CopyButton text={msg.content} />
+                    </div>
+                  )}
                   {msg.role === "user" && !isStreaming && (
                     <button
                       onClick={() => {
@@ -442,7 +519,7 @@ export default function Chat({
                         setEditingIdx(i);
                         inputRef.current?.focus();
                       }}
-                      className="absolute -bottom-1 -left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-full p-1"
+                      className="absolute -bottom-1 -left-1 opacity-0 group-hover:opacity-100 transition-all duration-200 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-full p-1"
                       title="Upraviť prompt"
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -494,7 +571,7 @@ export default function Chat({
             <span className="text-[10px] text-blue-400 animate-pulse">✏️ Opravujem preklepy…</span>
           </div>
         )}
-        <div className="flex items-end gap-2 bg-zinc-900 border rounded-2xl px-3 md:px-4 py-2">
+        <div className="flex items-end gap-2 bg-zinc-800/50 border border-zinc-700/50 rounded-2xl px-3 md:px-4 py-2 focus-within:border-zinc-600 focus-within:bg-zinc-800/80 transition-all duration-200">
           {/* Image upload */}
           <input
             ref={fileInputRef}
