@@ -14,43 +14,49 @@ import { trackUsage } from "./usage-tracker";
 import { fetchMailboxes, buildMailboxPromptContext, detectMailboxByEmail, type Mailbox } from "./mailboxes";
 import { getFeatures } from "./features";
 
-function buildEmailSystemPrompt(mailboxes: Mailbox[]): string {
+function buildEmailSystemPrompt(mailboxes: Mailbox[], conversationContext: string): string {
   const mbList = buildMailboxPromptContext(mailboxes);
-  return `Si JSON parser pre emailové príkazy. VŽDY odpovedz IBA platným JSON objektom, nič iné.
+  return `Si J.A.L.Z.A., inteligentný emailový asistent. Analyzuj konverzáciu a odpovedz JSON.
 
 INTENT typy: "chat", "send", "list", "search", "read", "reply", "cleanup"
 
 POLIA:
 - "intent": (povinné) jeden z typov vyššie
-- "response": (pre "chat") tvoja odpoveď po slovensky
+- "response": (povinné pre "chat") tvoja odpoveď po slovensky — buď priateľský a nápomocný
 - "today": true ak spomína "dnes", "dnešné", "dnešného dňa", "today"
 - "limit": počet emailov ak je uvedený
 - "mailbox": ID schránky (${mbList})
-- "filter": meno/firma na filtrovanie (napr. "od Petra" → "Peter")
+- "filter": meno/firma na filtrovanie
 - "query": hľadaný výraz pre search
 - "number": číslo emailu pre read/reply
 - "to": emailová adresa príjemcu pre send
 - "subject": predmet emailu pre send
 - "body": text emailu pre send
 
-PRAVIDLÁ:
-- Ak sa používateľ PÝTA otázku ("môžem?", "vieš?", "ako?") → použi "chat" a odpovedz
-- Ak chce poslať mail ale chýba adresa/predmet/text → použi "chat" a opýtaj sa čo chýba
-- Ak dáva jasný príkaz → použi príslušný intent
+HLAVNÉ PRAVIDLO — KONVERZUJ:
+- VŽDY najprv rozmýšľaj, či máš DOSŤ informácií na vykonanie akcie
+- Ak sa používateľ PÝTA ("môžem?", "vieš?", "čo vieš?", "ako?") → "chat" + odpovedz mu
+- Ak chce POSLAŤ mail ale chýba čokoľvek (komu/predmet/text) → "chat" + opýtaj sa čo chýba
+- Ak chce ODPOVEDAŤ ale nešpecifikoval na ktorý mail → "chat" + opýtaj sa
+- Ak chce VYMAZAŤ/CLEANUP ale nepotrvdil → "chat" + vysvetli čo sa stane a opýtaj sa na potvrdenie
+- Ak hovorí niečo nejasné → "chat" + opýtaj sa čo presne chce
+- Akciu (send/read/reply/list/search/cleanup) použi IBA keď máš 100% jasné ČO má urobiť
+
+KONVERZÁCIA:
+${conversationContext}
 
 PRÍKLADY:
 "maily z dneška" → {"intent":"list","today":true}
-"juraj maily z dneška" → {"intent":"list","today":true,"mailbox":"juraj"}
 "adsun maily" → {"intent":"list","mailbox":"adsun"}
 "prečítaj mail 3" → {"intent":"read","number":3}
 "hľadaj faktúra" → {"intent":"search","query":"faktúra"}
-"odpovedz na 1" → {"intent":"reply","number":1}
 "pošli mail na info@firma.sk predmet Test text Ahoj" → {"intent":"send","to":"info@firma.sk","subject":"Test","body":"Ahoj"}
-"vymaž spam" → {"intent":"cleanup"}
-"vieš posielať maily?" → {"intent":"chat","response":"Áno, viem posielať, čítať a vyhľadávať emaily. Čo potrebuješ?"}
 "napíš mail" → {"intent":"chat","response":"Komu mám poslať mail? Povedz mi adresu, predmet a čo chceš napísať."}
+"odpovedz" → {"intent":"chat","response":"Na ktorý mail mám odpovedať? Povedz mi číslo alebo od koho je."}
+"vymaž spam" → {"intent":"chat","response":"Chceš aby som analyzoval tvoje emaily a navrhol čo vymazať? Potvrd a spustím analýzu."}
+"vieš posielať maily?" → {"intent":"chat","response":"Áno! Viem posielať, čítať, vyhľadávať a organizovať emaily. Čo potrebuješ?"}
 
-DÔLEŽITÉ: Odpovedz IBA JSON. Žiadny text pred ani za JSON.`;
+Odpovedz IBA JSON, nič iné.`;
 }
 
 export interface EmailData {
@@ -301,10 +307,10 @@ export function useChat(activeAgent: Agent | null) {
     );
   };
 
-  const callAI = async (prompt: string, mailboxes?: Mailbox[]): Promise<string | null> => {
+  const callAI = async (prompt: string, mailboxes?: Mailbox[], conversationContext?: string): Promise<string | null> => {
     try {
       const mbs = mailboxes || await fetchMailboxes();
-      const systemPrompt = buildEmailSystemPrompt(mbs);
+      const systemPrompt = buildEmailSystemPrompt(mbs, conversationContext || "");
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -329,6 +335,11 @@ export function useChat(activeAgent: Agent | null) {
     const mailboxes = await fetchMailboxes();
     let mailbox = detectMailbox(userText, mailboxes);
 
+    const recentContext = updatedMessages
+      .slice(-8)
+      .map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`)
+      .join("\n");
+
     // If draft is waiting for address, try to resolve
     if (draftEmailRef.current && draftEmailRef.current.missing.includes("adresa príjemcu")) {
       const emailMatch = userText.match(/[\w.-]+@[\w.-]+\.\w{2,}/);
@@ -338,7 +349,7 @@ export function useChat(activeAgent: Agent | null) {
       if (resolvedTo) {
         const draft = draftEmailRef.current;
         draftEmailRef.current = null;
-        const aiText = await callAI(`${draft.originalText} na adresu ${resolvedTo}`);
+        const aiText = await callAI(`${draft.originalText} na adresu ${resolvedTo}`, undefined, recentContext);
         let subject = draft.subject || "Bez predmetu";
         let body = draft.body || draft.originalText;
         if (aiText) {
@@ -350,7 +361,7 @@ export function useChat(activeAgent: Agent | null) {
       }
     }
 
-    const aiText = await callAI(userText, mailboxes);
+    const aiText = await callAI(userText, mailboxes, recentContext);
     if (!aiText) {
       emailReply("Nepodarilo sa spojiť s AI. Skontroluj pripojenie.", route, updatedMessages, convId);
       return;
@@ -537,33 +548,35 @@ export function useChat(activeAgent: Agent | null) {
       .map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`)
       .join("\n");
 
-    const calPrompt = `Analyzuj konverzáciu o kalendári a vráť JSON.
+    const calPrompt = `Si J.A.L.Z.A., inteligentný kalendárový asistent. Analyzuj konverzáciu a vráť JSON.
 
 TYPY AKCIÍ:
-- "chat" — používateľ sa PÝTA otázku, chce konverzovať, alebo nemá dosť info na akciu. Odpovedz mu.
-- "need_details" — používateľ chce vytvoriť udalosť, ale CHÝBAJÚ mu dôležité detaily (čo, kedy). Opýtaj sa.
-- "list" — zobraziť udalosti
-- "create" — vytvoriť novú udalosť (iba ak je jasný PREDMET aj DÁTUM)
-- "delete" — zmazať udalosť
-- "search" — hľadať udalosť
+- "chat" — konverzuj s používateľom: odpovedz na otázku, opýtaj sa na chýbajúce detaily, vysvetli čo vieš robiť
+- "list" — zobraziť udalosti (iba ak JASNE žiada zobraziť program/udalosti)
+- "create" — vytvoriť novú udalosť (iba ak máš VŠETKY detaily: predmet, dátum, čas)
+- "delete" — zmazať udalosť (iba ak potvrdil čo presne zmazať)
+- "search" — hľadať udalosť (iba ak špecifikoval čo hľadať)
 
 FORMÁTY:
 Pre "chat": {"action":"chat","response":"...tvoja odpoveď po slovensky..."}
-Pre "need_details": {"action":"need_details","response":"...opýtaj sa čo chýba...","partial":{"subject":"...","date":"..."}}
 Pre "list": {"action":"list","period":"today"|"week"|"month"}
-Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"...","body":"...","attendees":["email1",...]}
+Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"...","body":"...","attendees":[]}
 Pre "delete": {"action":"delete","number":1}
 Pre "search": {"action":"search","query":"..."}
 
-PRAVIDLÁ:
+HLAVNÉ PRAVIDLO — KONVERZUJ:
+- Ak sa používateľ PÝTA ("viem tu?", "môžem?", "čo vieš?") → "chat" + odpovedz priateľsky
+- Ak chce VYTVORIŤ udalosť ale nepovedal ČO, KEDY, alebo KEDY presne → "chat" + opýtaj sa na chýbajúce detaily
+- Ak chce VYMAZAŤ ale nešpecifikoval čo → "chat" + opýtaj sa
+- Ak hovorí niečo vágne ("chcem pripomienky na týždeň") → "chat" + opýtaj sa čo konkrétne, na ktoré dni, aké pripomienky
+- NIKDY NEVYMÝŠĽAJ predmet, dátum ani čas — ak ti ich používateľ nepovedal, OPÝTAJ SA
+- Použi akciu (create/delete/search/list) IBA keď máš 100% jasno čo robiť
+- Buď priateľský, stručný a nápomocný
+
+KONTEXT:
 - Dnešný dátum: ${now.toISOString().slice(0, 10)} (${todayName})
-- Ak používateľ sa PÝTA (napr. "viem tu...?", "môžem...?", "ako...?") → použi "chat" a odpovedz mu
-- Ak používateľ chce vytvoriť ale nepovie ČO konkrétne alebo KEDY → použi "need_details" a opýtaj sa na detaily
-- NIKDY nevymýšľaj predmet alebo čas — ak ti ho používateľ nepovedal, použi "need_details"
-- Použi "create" IBA keď máš jasný predmet A dátum/čas od používateľa
-- Ak povie "pondelok", mysli NAJBLIŽŠÍ pondelok
-- Ak spomína firmu/adresu → "location", osoby → "subject", popis → "body"
-- AK POUŽÍVATEĽ POVIE "áno" alebo "potvrď" — pozri sa na PREDCHÁDZAJÚCU konverzáciu
+- Ak povie "pondelok" → najbližší pondelok
+- Ak povie "zajtra" → ${new Date(now.getTime() + 86400000).toISOString().slice(0, 10)}
 
 KONVERZÁCIA:
 ${recentContext}
@@ -1040,6 +1053,42 @@ Odpovedz IBA JSON, nič iné.`;
         }
 
         if (route.type === "business_action") {
+          const recentCtx = updated
+            .slice(-6)
+            .map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`)
+            .join("\n");
+
+          try {
+            const preCheckRes = await fetch("/api/gemini", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemPrompt: `Si J.A.L.Z.A., business asistent. Analyzuj požiadavku a rozhodni:
+- Ak používateľ JASNE zadal čo chce (produkt, zákazník, typ akcie) → vráť {"action":"execute","summary":"...krátky popis čo urobíš..."}
+- Ak niečo CHÝBA alebo je NEJASNÉ → vráť {"action":"chat","response":"...opýtaj sa čo chýba, po slovensky..."}
+- Ak sa len PÝTA čo vieš/môžeš → vráť {"action":"chat","response":"...vysvetli čo vieš robiť..."}
+
+Konverzácia:\n${recentCtx}\n\nPosledná správa: "${content}"
+Odpovedz IBA JSON.`,
+                prompt: content,
+                task_type: "classify",
+              }),
+            });
+            const preCheckData = await preCheckRes.json();
+            const preCheckRaw = (preCheckData.text || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+            try {
+              const preCheck = JSON.parse(preCheckRaw);
+              if (preCheck.action === "chat") {
+                const chatMsg: ChatMessage = { role: "assistant", content: preCheck.response || "Čo presne chceš v business systéme urobiť?", route };
+                const finalMsgs = [...updated, chatMsg];
+                setMessages(finalMsgs);
+                debouncedSave(finalMsgs, conversationId);
+                setIsStreaming(false);
+                return;
+              }
+            } catch { /* proceed with execution */ }
+          } catch { /* proceed with execution */ }
+
           const actionMsg: ChatMessage = { role: "assistant", content: "🏗️ **Business Agent** — spracovávam požiadavku…\n\n_Hľadám produkty, vytváram projekt a cenovú ponuku…_", route };
           setMessages([...updated, actionMsg]);
 
@@ -1134,6 +1183,35 @@ Otázka: ${content}`,
         }
 
         if (route.type === "agent") {
+          try {
+            const agentCtx = updated.slice(-6).map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`).join("\n");
+            const agentPreRes = await fetch("/api/gemini", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemPrompt: `Si J.A.L.Z.A. Analyzuj požiadavku:
+- Ak používateľ jasne zadal úlohu → {"action":"execute"}
+- Ak niečo chýba alebo je nejasné → {"action":"chat","response":"...opýtaj sa po slovensky..."}
+- Ak sa pýta čo vieš → {"action":"chat","response":"...vysvetli..."}
+Konverzácia:\n${agentCtx}\nPosledná: "${content}"\nIBA JSON.`,
+                prompt: content,
+                task_type: "classify",
+              }),
+            });
+            const agentPreData = await agentPreRes.json();
+            const agentPreRaw = (agentPreData.text || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+            try {
+              const agentPre = JSON.parse(agentPreRaw);
+              if (agentPre.action === "chat") {
+                const chatMsg: ChatMessage = { role: "assistant", content: agentPre.response || "Čo presne mám urobiť?", route };
+                setMessages([...updated, chatMsg]);
+                debouncedSave([...updated, chatMsg], conversationId);
+                setIsStreaming(false);
+                return;
+              }
+            } catch { /* proceed */ }
+          } catch { /* proceed */ }
+
           const agentMsg: ChatMessage = { role: "assistant", content: "🤖 **Agent spustený** — pracujem na úlohe krok po kroku…", route };
           setMessages([...updated, agentMsg]);
 
@@ -1193,6 +1271,35 @@ Otázka: ${content}`,
         }
 
         if (route.type === "research") {
+          try {
+            const resCtx = updated.slice(-6).map(m => `${m.role === "user" ? "Používateľ" : "Asistent"}: ${m.content}`).join("\n");
+            const resPreRes = await fetch("/api/gemini", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemPrompt: `Si J.A.L.Z.A. Analyzuj požiadavku na research:
+- Ak používateľ jasne povedal čo má vyhľadať a uložiť → {"action":"execute"}
+- Ak je nejasné čo presne hľadať alebo kam uložiť → {"action":"chat","response":"...opýtaj sa po slovensky..."}
+- Ak sa len pýta → {"action":"chat","response":"...vysvetli čo je research..."}
+Konverzácia:\n${resCtx}\nPosledná: "${content}"\nIBA JSON.`,
+                prompt: content,
+                task_type: "classify",
+              }),
+            });
+            const resPreData = await resPreRes.json();
+            const resPreRaw = (resPreData.text || "").replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+            try {
+              const resPre = JSON.parse(resPreRaw);
+              if (resPre.action === "chat") {
+                const chatMsg: ChatMessage = { role: "assistant", content: resPre.response || "Čo presne mám vyhľadať a kam to uložiť?", route };
+                setMessages([...updated, chatMsg]);
+                debouncedSave([...updated, chatMsg], conversationId);
+                setIsStreaming(false);
+                return;
+              }
+            } catch { /* proceed */ }
+          } catch { /* proceed */ }
+
           const researchMsg: ChatMessage = { role: "assistant", content: "Hľadám informácie na webe a ukladám do znalostnej databázy…", route };
           setMessages([...updated, researchMsg]);
 
