@@ -121,6 +121,7 @@ export function useChat(activeAgent: Agent | null) {
   } | null>(null);
 
   const lastMailboxRef = useRef<string>("personal");
+  const lastTodayFilterRef = useRef<boolean>(false);
 
   const debouncedSave = useCallback(
     (msgs: ChatMessage[], convId: string | null) => {
@@ -446,7 +447,16 @@ export function useChat(activeAgent: Agent | null) {
 
     // ── LIST (default) ──
     try {
-      const today = !!(intent.today);
+      const intentHasMailbox = !!intent.mailbox;
+      const intentHasToday = intent.today !== undefined;
+      // If user only switched mailbox (e.g. "adsun maily") and previously had today filter, keep it
+      const today = intentHasToday
+        ? !!(intent.today)
+        : (intentHasMailbox && lastTodayFilterRef.current)
+          ? true
+          : false;
+      lastTodayFilterRef.current = today;
+
       const requestLimit = (intent.limit as number) || 20;
       const filter = (intent.filter as string) || "";
       const res = await fetch(`/api/email?today=${today}&limit=${Math.min(requestLimit * 2, 50)}&mailbox=${mailbox}`);
@@ -454,7 +464,6 @@ export function useChat(activeAgent: Agent | null) {
       if (data.error) { emailReply(`Chyba: ${data.error}`, route, updatedMessages, convId); return; }
       let emails = data.emails || [];
 
-      // Client-side filter by name/company/content
       if (filter) {
         const f = filter.toLowerCase();
         emails = emails.filter((e: Record<string, unknown>) => {
@@ -465,7 +474,6 @@ export function useChat(activeAgent: Agent | null) {
         });
       }
 
-      // Apply limit after filtering
       if (intent.limit) {
         emails = emails.slice(0, requestLimit);
       }
@@ -1274,13 +1282,10 @@ Otázka: ${content}`,
             context += ` [Poloha používateľa: ${loc.city}, ${loc.country}]`;
           }
 
-          const lastIdx = plainMessages.length - 1;
-          const lastMsg = plainMessages[lastIdx];
-          plainMessages[lastIdx] = {
-            ...lastMsg,
-            content: `${context}\n\n${lastMsg.content}`,
-          };
-          await streamResponse("/api/search", { messages: plainMessages }, route, updated, conversationId);
+          const searchMessages = [
+            { role: "user" as const, content: `${context}\n\n${content}` },
+          ];
+          await streamResponse("/api/search", { messages: searchMessages }, route, updated, conversationId);
         } else if (route.type === "knowledge" && route.agentKey) {
           await streamResponse(
             "/api/chat",
