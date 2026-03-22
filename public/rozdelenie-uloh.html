@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rozdelenie úloh – Tím</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0a0a0f; color: #e0e0e0; line-height: 1.6; overflow-x: hidden;
+        }
+        .grain {
+            position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: .03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        /* Hero */
+        .hero {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            text-align: center; padding: 2rem; position: relative;
+            background: radial-gradient(ellipse at 20% 30%, rgba(251,191,36,.1) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 20%, rgba(99,102,241,.1) 0%, transparent 50%),
+                        radial-gradient(ellipse at 50% 80%, rgba(34,197,94,.08) 0%, transparent 50%);
+        }
+        .hero h1 {
+            font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 900;
+            letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff 0%, #fcd34d 35%, #a5b4fc 65%, #86efac 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero p { font-size: 1.25rem; color: #94a3b8; max-width: 600px; margin: 0 auto 2.5rem; }
+        .hero .scroll-hint {
+            position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
+            animation: bounce 2s infinite; color: #475569; font-size: .85rem;
+            display: flex; flex-direction: column; align-items: center; gap: .5rem;
+        }
+        .hero .scroll-hint svg { width: 24px; height: 24px; stroke: #475569; }
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(8px); }
+        }
+
+        /* Layout */
+        .section { max-width: 1200px; margin: 0 auto; padding: 6rem 2rem; }
+        .section-title { font-size: 2rem; font-weight: 800; margin-bottom: .5rem; letter-spacing: -0.02em; }
+        .section-subtitle { color: #64748b; font-size: 1.1rem; margin-bottom: 3rem; }
+
+        /* 3-person grid */
+        .team-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; }
+        @media (max-width: 1000px) { .team-grid { grid-template-columns: 1fr; } }
+
+        .person-card {
+            border-radius: 1.25rem; padding: 2rem; position: relative;
+            overflow: hidden; border: 1px solid rgba(255,255,255,.06);
+        }
+        .person-card::before {
+            content: ''; position: absolute; inset: 0; border-radius: 1.25rem; opacity: .5;
+        }
+
+        .c-amber  { background: linear-gradient(160deg, rgba(251,191,36,.08) 0%, rgba(15,15,25,.9) 60%); }
+        .c-amber::before  { background: radial-gradient(circle at 20% 20%, rgba(251,191,36,.15) 0%, transparent 60%); }
+        .c-blue   { background: linear-gradient(160deg, rgba(99,102,241,.08) 0%, rgba(15,15,25,.9) 60%); }
+        .c-blue::before   { background: radial-gradient(circle at 50% 20%, rgba(99,102,241,.15) 0%, transparent 60%); }
+        .c-green  { background: linear-gradient(160deg, rgba(34,197,94,.08) 0%, rgba(15,15,25,.9) 60%); }
+        .c-green::before  { background: radial-gradient(circle at 80% 20%, rgba(34,197,94,.15) 0%, transparent 60%); }
+
+        .person-label {
+            display: inline-block; font-size: .65rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .1em;
+            padding: .3rem .7rem; border-radius: 999px; margin-bottom: 1rem;
+        }
+        .c-amber .person-label { background: rgba(251,191,36,.15); color: #fcd34d; }
+        .c-blue .person-label  { background: rgba(99,102,241,.15); color: #a5b4fc; }
+        .c-green .person-label { background: rgba(34,197,94,.15); color: #86efac; }
+
+        .person-card h3 { font-size: 1.25rem; font-weight: 800; margin-bottom: .3rem; }
+        .person-card .role-desc { color: #94a3b8; margin-bottom: 1.25rem; font-size: .85rem; }
+
+        .task-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+        .task-list li {
+            display: flex; align-items: flex-start; gap: .6rem;
+            padding: .6rem .75rem; border-radius: .6rem;
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.04);
+            transition: background .2s;
+        }
+        .task-list li:hover { background: rgba(255,255,255,.06); }
+
+        .task-icon {
+            flex-shrink: 0; width: 26px; height: 26px; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center; font-size: .85rem;
+        }
+        .c-amber .task-icon { background: rgba(251,191,36,.12); }
+        .c-blue .task-icon  { background: rgba(99,102,241,.12); }
+        .c-green .task-icon { background: rgba(34,197,94,.12); }
+
+        .task-text strong { display: block; font-size: .8rem; color: #f1f5f9; }
+        .task-text span { font-size: .72rem; color: #64748b; }
+
+        .tools-grid { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: 1.25rem; }
+        .tool-badge {
+            font-size: .65rem; font-weight: 600; padding: .2rem .55rem;
+            border-radius: 999px; background: rgba(255,255,255,.05);
+            border: 1px solid rgba(255,255,255,.08); color: #94a3b8;
+        }
+        .c-amber .tool-badge { border-color: rgba(251,191,36,.2); }
+        .c-blue .tool-badge  { border-color: rgba(99,102,241,.2); }
+        .c-green .tool-badge { border-color: rgba(34,197,94,.2); }
+
+        /* Flow */
+        .flow-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem; margin-top: 2rem;
+        }
+        .flow-step {
+            border-radius: 1rem; padding: 1.25rem; text-align: center;
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+        }
+        .flow-step .step-num {
+            font-size: .65rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .08em; margin-bottom: .4rem;
+        }
+        .flow-step h4 { font-size: .85rem; font-weight: 700; margin-bottom: .3rem; }
+        .flow-step p { font-size: .75rem; color: #94a3b8; }
+
+        /* Hub */
+        .hub { text-align: center; padding: 4rem 2rem; }
+        .hub-visual {
+            display: flex; align-items: center; justify-content: center;
+            flex-wrap: wrap; gap: 1.25rem; margin: 2.5rem auto; max-width: 900px;
+        }
+        .hub-node {
+            padding: 1rem 1.5rem; border-radius: 1rem; font-weight: 700;
+            font-size: .85rem; min-width: 140px; text-align: center;
+        }
+        .hub-center {
+            padding: 1.5rem 2.25rem; border-radius: 1.25rem; font-weight: 800;
+            font-size: 1.05rem; min-width: 180px;
+            background: linear-gradient(135deg, rgba(168,85,247,.2), rgba(99,102,241,.15));
+            border: 1px solid rgba(168,85,247,.3); color: #c4b5fd;
+        }
+        .hub-arrow { color: #334155; font-size: 1.25rem; }
+
+        /* Rules */
+        .rules-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; margin-top: 2rem; }
+        @media (max-width: 1000px) { .rules-grid { grid-template-columns: 1fr; } }
+        .rule-card {
+            border-radius: 1rem; padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,.06); background: rgba(255,255,255,.02);
+        }
+        .rule-card h4 {
+            font-size: .85rem; font-weight: 700; margin-bottom: .75rem;
+            display: flex; align-items: center; gap: .4rem;
+        }
+        .rule-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; }
+        .rule-list li {
+            display: flex; align-items: center; gap: .5rem; font-size: .78rem; color: #94a3b8;
+        }
+        .rule-list .x { color: #ef4444; font-weight: 800; font-size: .8rem; flex-shrink: 0; }
+
+        /* GEO */
+        .geo-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem; }
+        @media (max-width: 768px) { .geo-grid { grid-template-columns: 1fr; } }
+        .geo-card {
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+            border-radius: 1rem; padding: 1.5rem; text-align: center;
+        }
+        .geo-card .icon { font-size: 1.75rem; margin-bottom: .5rem; }
+        .geo-card h4 { font-size: .85rem; font-weight: 700; margin-bottom: .35rem; color: #f1f5f9; }
+        .geo-card p { font-size: .78rem; color: #94a3b8; }
+        .geo-card.highlight {
+            background: linear-gradient(135deg, rgba(34,197,94,.08), rgba(34,197,94,.02));
+            border-color: rgba(34,197,94,.2);
+        }
+        .geo-card.highlight h4 { color: #86efac; }
+
+        .geo-split { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+        @media (max-width: 768px) { .geo-split { grid-template-columns: 1fr; } }
+        .geo-detail { border-radius: 1rem; padding: 1.25rem; }
+        .geo-detail h5 { font-size: .8rem; font-weight: 700; margin-bottom: .5rem; }
+        .geo-detail ul { list-style: none; display: flex; flex-direction: column; gap: .25rem; }
+        .geo-detail ul li {
+            font-size: .78rem; color: #94a3b8; padding-left: 1rem; position: relative;
+        }
+        .geo-detail ul li::before { content: '→'; position: absolute; left: 0; color: #475569; }
+
+        /* Timeline */
+        .tl { position: relative; margin-top: 3rem; }
+        .tl::before {
+            content: ''; position: absolute; left: 50%; top: 0; bottom: 0;
+            width: 2px; transform: translateX(-50%);
+            background: linear-gradient(to bottom, rgba(251,191,36,.3), rgba(99,102,241,.3), rgba(34,197,94,.3));
+        }
+        @media (max-width: 768px) { .tl::before { left: 16px; } }
+        .tl-item { display: flex; align-items: flex-start; margin-bottom: 1.5rem; position: relative; }
+        .tl-item:nth-child(odd) { flex-direction: row-reverse; }
+        @media (max-width: 768px) {
+            .tl-item, .tl-item:nth-child(odd) { flex-direction: row; padding-left: 44px; }
+        }
+        .tl-content {
+            width: 44%; padding: 1.25rem; border-radius: 1rem;
+            background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+        }
+        @media (max-width: 768px) { .tl-content { width: 100%; } }
+        .tl-dot {
+            position: absolute; left: 50%; top: 1.25rem;
+            width: 12px; height: 12px; border-radius: 50%;
+            transform: translateX(-50%); z-index: 2;
+        }
+        @media (max-width: 768px) { .tl-dot { left: 16px; } }
+        .tl-dot.amber { background: #fbbf24; box-shadow: 0 0 10px rgba(251,191,36,.4); }
+        .tl-dot.blue  { background: #6366f1; box-shadow: 0 0 10px rgba(99,102,241,.4); }
+        .tl-dot.green { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,.4); }
+        .tl-period { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: .4rem; }
+        .tl-period.amber { color: #fcd34d; }
+        .tl-period.blue  { color: #a5b4fc; }
+        .tl-period.green { color: #86efac; }
+        .tl-content h4 { font-size: .9rem; font-weight: 700; margin-bottom: .4rem; }
+        .tl-content ul { list-style: none; display: flex; flex-direction: column; gap: .25rem; }
+        .tl-content ul li {
+            font-size: .78rem; color: #94a3b8; padding-left: 1rem; position: relative;
+        }
+        .tl-content ul li::before { content: '→'; position: absolute; left: 0; color: #475569; }
+
+        .footer {
+            text-align: center; padding: 4rem 2rem;
+            border-top: 1px solid rgba(255,255,255,.05);
+        }
+        .footer-quote {
+            font-size: 1.35rem; font-weight: 700; max-width: 800px; margin: 0 auto 1rem;
+            background: linear-gradient(135deg, #fcd34d, #a5b4fc, #86efac);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .footer p { color: #475569; font-size: .9rem; }
+    </style>
+</head>
+<body>
+
+<div class="grain"></div>
+
+<!-- HERO -->
+<section class="hero">
+    <div>
+        <h1>Rozdelenie úloh</h1>
+        <p>3 ľudia, jasné kompetencie, žiadne prekrývanie. Každý vie čo robí a prečo.</p>
+    </div>
+    <div class="scroll-hint">
+        <span>Scrolluj</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+</section>
+
+<!-- TÍM -->
+<section class="section">
+    <div class="section-title">Tím</div>
+    <div class="section-subtitle">Traja ľudia, tri jasné role</div>
+
+    <div class="team-grid">
+
+        <!-- CHLEPKO -->
+        <div class="person-card c-amber">
+            <span class="person-label">CEO / Operations</span>
+            <h3>Jura Chlepko</h3>
+            <p class="role-desc">Riadi firmu, komunikuje so zamestnancami, financie, sťahovanie do nových priestorov, celá agenda okolo riadenia. Testuje Business Flow, dáva spätnú väzbu. Silný výkon a exekúcia. Čiastočne aj obchod.</p>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">👔</div>
+                    <div class="task-text">
+                        <strong>Riadenie firmy</strong>
+                        <span>Zamestnanci, procesy, denné operácie, celá agenda</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🏢</div>
+                    <div class="task-text">
+                        <strong>Sťahovanie do nových priestorov</strong>
+                        <span>Logistika, zariadenie, plánovanie, koordinácia</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">💰</div>
+                    <div class="task-text">
+                        <strong>Financie</strong>
+                        <span>Rozpočty, fakturácia, cash flow, cenníky</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🤝</div>
+                    <div class="task-text">
+                        <strong>Obchod (čiastočne)</strong>
+                        <span>Komunikácia s klientmi, zákaznícky servis</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🔧</div>
+                    <div class="task-text">
+                        <strong>Nastavenie riešení & integrácie</strong>
+                        <span>Nasadzovanie nástrojov do reálnej prevádzky</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🧪</div>
+                    <div class="task-text">
+                        <strong>Testovanie Business Flow</strong>
+                        <span>Testuje procesy, hľadá chyby, dáva feedback</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">📋</div>
+                    <div class="task-text">
+                        <strong>Spätná väzba & prioritizácia</strong>
+                        <span>Čo nefunguje, čo treba, čo je priorita</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">Business Flow AI</span>
+                <span class="tool-badge">Email</span>
+                <span class="tool-badge">Fakturácia</span>
+                <span class="tool-badge">Telefón</span>
+            </div>
+        </div>
+
+        <!-- MARTINKOVYCH -->
+        <div class="person-card c-blue">
+            <span class="person-label">CTO / Software</span>
+            <h3>Juraj Martinkovych</h3>
+            <p class="role-desc">Stavia softvér, prerobenie webu, technicky nastavuje ads cez Cursor agenticky, AI integrácie, GEO optimalizácia, SW strana prepojenia s HW. Čiastočne aj obchod (~10%).</p>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">⚡</div>
+                    <div class="task-text">
+                        <strong>Vývoj Business Flow AI</strong>
+                        <span>Nové features, bug fixy, stabilita</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🌐</div>
+                    <div class="task-text">
+                        <strong>Prerobenie firemného webu</strong>
+                        <span>Moderný web, rýchlosť, konverzie, SEO</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">📢</div>
+                    <div class="task-text">
+                        <strong>Ads — technické nastavenie</strong>
+                        <span>Google Ads, Meta pixel, GTM, tracking — podľa Dodovej stratégie</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🧠</div>
+                    <div class="task-text">
+                        <strong>AI Search Optimization (GEO)</strong>
+                        <span>Schema.org, štruktúrované dáta — aby AI odporúčali firmu</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🤖</div>
+                    <div class="task-text">
+                        <strong>AI integrácie & automatizácie</strong>
+                        <span>Agenti, MCP tools, process flow</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🔗</div>
+                    <div class="task-text">
+                        <strong>SW + HW prepojenie</strong>
+                        <span>Softvérová strana prepojenia s Dodovým HW</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🤝</div>
+                    <div class="task-text">
+                        <strong>Obchod (~10%)</strong>
+                        <span>Príležitostná komunikácia s klientmi, technické konzultácie</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">Cursor</span>
+                <span class="tool-badge">Next.js</span>
+                <span class="tool-badge">TypeScript</span>
+                <span class="tool-badge">Vercel</span>
+                <span class="tool-badge">Turso</span>
+                <span class="tool-badge">Google Ads / GTM</span>
+                <span class="tool-badge">Schema.org</span>
+                <span class="tool-badge">Claude / Gemini API</span>
+            </div>
+        </div>
+
+        <!-- DODO / TOMÁŠEK -->
+        <div class="person-card c-green">
+            <span class="person-label">Hardware + Marketing</span>
+            <h3>Jozef Tomášek (Dodo)</h3>
+            <p class="role-desc">Projekty a kalkulácie svetelných reklám, obchodník. 3D tlač, HW inovácie + ads stratégia, video prompting, obsahový plán. Navrhuje ČO a PREČO, Juraj nastavuje technicky. Spolu s tímom spisuje pravidlá do Business Flow.</p>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">💡</div>
+                    <div class="task-text">
+                        <strong>Projekty & kalkulácie svetelných reklám</strong>
+                        <span>Nacenenie, projekty, technické riešenia, realizácia</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🤝</div>
+                    <div class="task-text">
+                        <strong>Obchod (hlavný obchodník)</strong>
+                        <span>Akvizícia zákazníkov, ponuky, vyjednávanie</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🖨️</div>
+                    <div class="task-text">
+                        <strong>3D tlač & nastavenie</strong>
+                        <span>Konfigurácia tlačiarní, materiály, procesy</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🔬</div>
+                    <div class="task-text">
+                        <strong>Technické inovácie (HW)</strong>
+                        <span>Nové technológie, zariadenia, testovanie</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🔗</div>
+                    <div class="task-text">
+                        <strong>HW + SW prepojenie</strong>
+                        <span>Hardvérová strana, Juraj robí SW stránku</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🎯</div>
+                    <div class="task-text">
+                        <strong>Ads stratégia & štruktúra</strong>
+                        <span>Cieľovky, kampane, rozpočet, funnel</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🎬</div>
+                    <div class="task-text">
+                        <strong>Video tvorba (AI prompting)</strong>
+                        <span>Krátke videá, reels, produktové ukážky cez AI</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">✍️</div>
+                    <div class="task-text">
+                        <strong>Copywriting & obsah</strong>
+                        <span>Texty, posty, obsahový kalendár</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">📝</div>
+                    <div class="task-text">
+                        <strong>Business Flow pravidlá</strong>
+                        <span>Spolu s tímom spisuje a nastavuje procesy</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">3D tlačiarne</span>
+                <span class="tool-badge">CAD / Slicer</span>
+                <span class="tool-badge">Claude / ChatGPT</span>
+                <span class="tool-badge">Canva</span>
+                <span class="tool-badge">CapCut</span>
+                <span class="tool-badge">Runway</span>
+                <span class="tool-badge">HeyGen</span>
+                <span class="tool-badge">Metricool</span>
+                <span class="tool-badge">Business Flow AI</span>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<!-- OBCHOD ROZDELENIE -->
+<section class="section">
+    <div class="section-title">Obchod — kto koľko</div>
+    <div class="section-subtitle">Obchod robia traja, ale v rôznej miere</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.25rem;">
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(34,197,94,.05); border:1px solid rgba(34,197,94,.15); text-align:center;">
+            <div style="font-size:2.5rem; font-weight:900; color:#86efac; margin-bottom:.25rem;">~60%</div>
+            <div style="font-weight:700; font-size:.9rem; color:#f1f5f9; margin-bottom:.35rem;">Dodo (Tomášek)</div>
+            <div style="font-size:.78rem; color:#94a3b8;">Hlavný obchodník. Projekty, kalkulácie, akvizícia, ponuky na svetelné reklamy a 3D tlač.</div>
+        </div>
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(251,191,36,.05); border:1px solid rgba(251,191,36,.15); text-align:center;">
+            <div style="font-size:2.5rem; font-weight:900; color:#fcd34d; margin-bottom:.25rem;">~30%</div>
+            <div style="font-weight:700; font-size:.9rem; color:#f1f5f9; margin-bottom:.35rem;">Chlepko</div>
+            <div style="font-size:.78rem; color:#94a3b8;">Existujúci klienti, vzťahy, zákaznícky servis, obchodné stretnutia.</div>
+        </div>
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(99,102,241,.05); border:1px solid rgba(99,102,241,.15); text-align:center;">
+            <div style="font-size:2.5rem; font-weight:900; color:#a5b4fc; margin-bottom:.25rem;">~10%</div>
+            <div style="font-weight:700; font-size:.9rem; color:#f1f5f9; margin-bottom:.35rem;">Juraj</div>
+            <div style="font-size:.78rem; color:#94a3b8;">Technické konzultácie, príležitostná komunikácia s klientmi.</div>
+        </div>
+    </div>
+</section>
+
+<!-- ADS WORKFLOW -->
+<section class="section">
+    <div class="section-title">Ako fungujú Ads</div>
+    <div class="section-subtitle">Dodo navrhne stratégiu → Chlepko odsúhlasí → Juraj nastaví technicky</div>
+
+    <div class="flow-grid">
+        <div class="flow-step" style="border-color: rgba(34,197,94,.15);">
+            <div class="step-num" style="color:#86efac;">1. Dodo</div>
+            <h4>Navrhne stratégiu</h4>
+            <p>Cieľovka, kampane, copy, vizuály, video</p>
+        </div>
+        <div class="flow-step" style="border-color: rgba(251,191,36,.15);">
+            <div class="step-num" style="color:#fcd34d;">2. Chlepko</div>
+            <h4>Odsúhlasí budget</h4>
+            <p>Financie, rozpočet, ROI očakávania</p>
+        </div>
+        <div class="flow-step" style="border-color: rgba(99,102,241,.15);">
+            <div class="step-num" style="color:#a5b4fc;">3. Juraj</div>
+            <h4>Nastaví technicky</h4>
+            <p>Pixel, tracking, konverzie, GTM — cez Cursor</p>
+        </div>
+        <div class="flow-step" style="border-color: rgba(34,197,94,.15);">
+            <div class="step-num" style="color:#86efac;">4. Dodo</div>
+            <h4>Vyhodnotí metriky</h4>
+            <p>Čo funguje, kam budget, A/B výsledky</p>
+        </div>
+        <div class="flow-step" style="border-color: rgba(99,102,241,.15);">
+            <div class="step-num" style="color:#a5b4fc;">5. Juraj</div>
+            <h4>Optimalizuje</h4>
+            <p>Úprava trackingu, audience, landing page</p>
+        </div>
+    </div>
+</section>
+
+<!-- SW + HW -->
+<section class="section">
+    <div class="section-title">SW + HW prepojenie</div>
+    <div class="section-subtitle">Dodo (HW) a Juraj (SW) spolu posúvajú firmu na novú úroveň</div>
+
+    <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:1.5rem; align-items:center;">
+        <div class="flow-step" style="border-color: rgba(34,197,94,.15);">
+            <div class="step-num" style="color:#86efac;">Dodo (Tomášek)</div>
+            <h4>Hardware strana</h4>
+            <p>3D tlačiarne, svetelné reklamy, senzory, zariadenia, výrobné technológie</p>
+        </div>
+        <div style="color:#475569; font-size:2rem;">⟷</div>
+        <div class="flow-step" style="border-color: rgba(99,102,241,.15);">
+            <div class="step-num" style="color:#a5b4fc;">Juraj</div>
+            <h4>Software strana</h4>
+            <p>API, dashboard, monitoring, automatizácia, Business Flow integrácia</p>
+        </div>
+    </div>
+    <div style="text-align:center; margin-top:1.5rem; padding:1.25rem; border-radius:1rem; background:rgba(168,85,247,.06); border:1px solid rgba(168,85,247,.15);">
+        <div style="font-weight:700; color:#c4b5fd; font-size:.85rem; margin-bottom:.3rem;">Spoločne spisujú pravidlá do Business Flow</div>
+        <div style="font-size:.78rem; color:#94a3b8;">Výrobné procesy, pravidlá pre 3D tlač, workflow svetelných reklám — všetko v systéme</div>
+    </div>
+</section>
+
+<!-- GEO -->
+<section class="section">
+    <div class="section-title">AI Search Optimization (GEO)</div>
+    <div class="section-subtitle">Aby AI nástroje odporúčali vašu firmu</div>
+
+    <div class="geo-grid">
+        <div class="geo-card">
+            <div class="icon">💬</div>
+            <h4>Niekto sa spýta</h4>
+            <p>"Kto robí svetelné reklamy?" "Aká firma robí 3D tlač na Slovensku?"</p>
+        </div>
+        <div class="geo-card">
+            <div class="icon">🤖</div>
+            <h4>AI odpovie</h4>
+            <p>ChatGPT, Gemini, Perplexity prehľadajú web a odporučia firmy</p>
+        </div>
+        <div class="geo-card highlight">
+            <div class="icon">✅</div>
+            <h4>Vaša firma v odpovedi</h4>
+            <p>Správne štruktúrovaný web + obsah = AI vás zaradí do odporúčaní</p>
+        </div>
+    </div>
+
+    <div class="geo-split">
+        <div class="geo-detail" style="background:rgba(99,102,241,.05); border:1px solid rgba(99,102,241,.15);">
+            <h5 style="color:#a5b4fc;">🔧 Juraj (technicky)</h5>
+            <ul>
+                <li>Schema.org štruktúrované dáta</li>
+                <li>FAQ sekcie s reálnymi otázkami</li>
+                <li>Strojovo čitateľné popisy služieb</li>
+                <li>Google Business Profile</li>
+                <li>SEO-friendly web (Next.js SSR)</li>
+            </ul>
+        </div>
+        <div class="geo-detail" style="background:rgba(34,197,94,.05); border:1px solid rgba(34,197,94,.15);">
+            <h5 style="color:#86efac;">📝 Dodo (obsah)</h5>
+            <ul>
+                <li>Recenzie na Google, Firmy.sk</li>
+                <li>Články a blog posty</li>
+                <li>Zmienky na externých weboch</li>
+                <li>Case studies a referenčné projekty</li>
+                <li>Video obsah na YouTube</li>
+            </ul>
+        </div>
+        <div class="geo-detail" style="background:rgba(251,191,36,.05); border:1px solid rgba(251,191,36,.15);">
+            <h5 style="color:#fcd34d;">🤝 Chlepko (podpora)</h5>
+            <ul>
+                <li>Zbieranie feedbacku od klientov</li>
+                <li>Referenčné kontakty</li>
+                <li>Reálne otázky zákazníkov pre FAQ</li>
+                <li>Overenie faktov a údajov</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- PRAVIDLÁ -->
+<section class="section">
+    <div class="section-title">Pravidlá hry</div>
+    <div class="section-subtitle">Kto čo NEROBÍ — aby sme si neliezli do kapusty</div>
+
+    <div class="rules-grid">
+        <div class="rule-card" style="border-color: rgba(251,191,36,.1);">
+            <h4 style="color:#fcd34d;">🚫 Chlepko nerobí</h4>
+            <ul class="rule-list">
+                <li><span class="x">✕</span> Nekóduje, nehýbe sa v Cursore</li>
+                <li><span class="x">✕</span> Nevymýšľa ads stratégiu / kreativitu</li>
+                <li><span class="x">✕</span> Nenastavuje 3D tlačiarne ani HW</li>
+                <li><span class="x">✕</span> Netočí a nepromptuje videá</li>
+            </ul>
+        </div>
+        <div class="rule-card" style="border-color: rgba(99,102,241,.1);">
+            <h4 style="color:#a5b4fc;">🚫 Juraj nerobí</h4>
+            <ul class="rule-list">
+                <li><span class="x">✕</span> Nevymýšľa ads stratégiu / cieľovky</li>
+                <li><span class="x">✕</span> Nepíše copy / nepromptuje videá</li>
+                <li><span class="x">✕</span> Neriadi firmu / zamestnancov</li>
+                <li><span class="x">✕</span> Nenastavuje hardvér fyzicky</li>
+            </ul>
+        </div>
+        <div class="rule-card" style="border-color: rgba(34,197,94,.1);">
+            <h4 style="color:#86efac;">🚫 Dodo nerobí</h4>
+            <ul class="rule-list">
+                <li><span class="x">✕</span> Nekóduje softvér / web</li>
+                <li><span class="x">✕</span> Nenastavuje ads tracking technicky</li>
+                <li><span class="x">✕</span> Nerobí financie / fakturáciu</li>
+                <li><span class="x">✕</span> Neriadi zamestnancov</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- HUB -->
+<section class="hub">
+    <div class="section" style="padding-top:0;">
+        <div class="section-title">Kde sa stretávame</div>
+        <div class="section-subtitle">Business Flow AI je centrálny systém celého tímu</div>
+
+        <div class="hub-visual">
+            <div class="hub-node" style="background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.2); color:#fcd34d;">
+                Chlepko<br><small style="font-weight:400;font-size:.7rem;opacity:.7;">Testuje & feedback</small>
+            </div>
+            <div class="hub-arrow">⟷</div>
+            <div class="hub-center">BUSINESS<br>FLOW AI</div>
+            <div class="hub-arrow">⟷</div>
+            <div class="hub-node" style="background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.2); color:#a5b4fc;">
+                Juraj<br><small style="font-weight:400;font-size:.7rem;opacity:.7;">Stavia & rozvíja</small>
+            </div>
+        </div>
+        <div style="display:flex; justify-content:center; margin-top:-.5rem;">
+            <div class="hub-arrow" style="transform:rotate(90deg);">⟷</div>
+        </div>
+        <div style="display:flex; justify-content:center; margin-top:-.5rem;">
+            <div class="hub-node" style="background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.2); color:#86efac;">
+                Dodo<br><small style="font-weight:400;font-size:.7rem;opacity:.7;">Pravidlá, HW data & obsah</small>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- TIMELINE -->
+<section class="section">
+    <div class="section-title">Plán učenia</div>
+    <div class="section-subtitle">Kto sa čo učí a kedy</div>
+
+    <div class="tl">
+        <div class="tl-item">
+            <div class="tl-content" style="margin-right:auto;">
+                <div class="tl-period amber">Chlepko — Týždeň 1–2</div>
+                <h4>Business Flow onboarding</h4>
+                <ul>
+                    <li>Testovanie procesov v systéme</li>
+                    <li>Reporting a spätná väzba</li>
+                    <li>Nastavenie integrácií do prevádzky</li>
+                </ul>
+            </div>
+            <div class="tl-dot amber"></div>
+        </div>
+
+        <div class="tl-item">
+            <div class="tl-content" style="margin-left:auto;">
+                <div class="tl-period blue">Juraj — Týždeň 1–2</div>
+                <h4>Web + ads základ</h4>
+                <ul>
+                    <li>Prerobenie firemného webu</li>
+                    <li>Schema.org + štruktúrované dáta</li>
+                    <li>Google Ads tracking + GTM setup</li>
+                </ul>
+            </div>
+            <div class="tl-dot blue"></div>
+        </div>
+
+        <div class="tl-item">
+            <div class="tl-content" style="margin-right:auto;">
+                <div class="tl-period green">Dodo — Týždeň 1–2</div>
+                <h4>Video prompting + HW procesy</h4>
+                <ul>
+                    <li>AI video nástroje (Runway, HeyGen, CapCut)</li>
+                    <li>Ads stratégia — štruktúra kampaní</li>
+                    <li>Spísanie HW pravidiel do Business Flow</li>
+                </ul>
+            </div>
+            <div class="tl-dot green"></div>
+        </div>
+
+        <div class="tl-item">
+            <div class="tl-content" style="margin-left:auto;">
+                <div class="tl-period amber">Chlepko — Mesiac 1–2</div>
+                <h4>Procesná optimalizácia</h4>
+                <ul>
+                    <li>Vyhodnotenie procesov a nákladov</li>
+                    <li>Automatizácia rutinných operácií</li>
+                    <li>Škálovanie a outsourcing úloh</li>
+                </ul>
+            </div>
+            <div class="tl-dot amber"></div>
+        </div>
+
+        <div class="tl-item">
+            <div class="tl-content" style="margin-right:auto;">
+                <div class="tl-period blue">Juraj — Mesiac 1–2</div>
+                <h4>AI viditeľnosť & prepojenia</h4>
+                <ul>
+                    <li>GEO optimalizácia pre AI vyhľadávače</li>
+                    <li>Google Ads kampane + remarketing</li>
+                    <li>SW+HW integrácie s Dodom</li>
+                </ul>
+            </div>
+            <div class="tl-dot blue"></div>
+        </div>
+
+        <div class="tl-item">
+            <div class="tl-content" style="margin-left:auto;">
+                <div class="tl-period green">Dodo — Mesiac 1–2</div>
+                <h4>Pokročilý marketing + HW inovácie</h4>
+                <ul>
+                    <li>Pokročilý video prompting & editing</li>
+                    <li>Ads optimalizácia — A/B testy, funnel</li>
+                    <li>Prvé SW+HW prepojenia s Jurajom</li>
+                    <li>Nové HW technológie a testovanie</li>
+                </ul>
+            </div>
+            <div class="tl-dot green"></div>
+        </div>
+    </div>
+</section>
+
+<!-- AI NÁSTROJE PRE KAŽDÉHO -->
+<section class="section">
+    <div class="section-title">AI nástroje — kto čo používa</div>
+    <div class="section-subtitle">Žiadny n8n, žiadny Zapier. Všetko cez vlastný softvér + individuálne AI nástroje pre dennú prácu.</div>
+
+    <div class="team-grid">
+
+        <!-- CHLEPKO AI -->
+        <div class="person-card c-amber">
+            <span class="person-label">Chlepko — AI nástroje</span>
+            <h3>Riadenie & komunikácia</h3>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">💬</div>
+                    <div class="task-text">
+                        <strong>Claude / ChatGPT</strong>
+                        <span>Emaily, zápisnice, analýzy, rozhodovanie</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">📊</div>
+                    <div class="task-text">
+                        <strong>Business Flow AI (vlastný softvér)</strong>
+                        <span>Prehľady, štatistiky, testovanie procesov, feedback</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🖥️</div>
+                    <div class="task-text">
+                        <strong>Manus AI (desktop agent)</strong>
+                        <span>Organizácia súborov, automatické triedenie dokumentov, emaily</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🎙️</div>
+                    <div class="task-text">
+                        <strong>Whisper / Otter.ai</strong>
+                        <span>Prepis porád a hovorov, automatické zápisnice</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">Claude</span>
+                <span class="tool-badge">Business Flow AI</span>
+                <span class="tool-badge">Manus</span>
+                <span class="tool-badge">Whisper</span>
+            </div>
+        </div>
+
+        <!-- JURAJ AI -->
+        <div class="person-card c-blue">
+            <span class="person-label">Juraj — AI nástroje</span>
+            <h3>Vývoj & implementácia</h3>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">⚡</div>
+                    <div class="task-text">
+                        <strong>Cursor (agenti)</strong>
+                        <span>Hlavný vývojový nástroj — agentický vývoj, multi-file editing</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🔌</div>
+                    <div class="task-text">
+                        <strong>Claude MCP</strong>
+                        <span>Prepojenie na databázy, GitHub, API — priamo v Cursore</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🧠</div>
+                    <div class="task-text">
+                        <strong>Claude API / Gemini API</strong>
+                        <span>AI moduly v Business Flow — cenové analýzy, odporúčania, učiaci sa systém</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🤖</div>
+                    <div class="task-text">
+                        <strong>Jalza (vlastný agent, učenie)</strong>
+                        <span>Experimentálny AI agent — voice, email, knowledge base</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">Cursor</span>
+                <span class="tool-badge">Claude MCP</span>
+                <span class="tool-badge">Claude API</span>
+                <span class="tool-badge">Gemini API</span>
+                <span class="tool-badge">Jalza</span>
+            </div>
+        </div>
+
+        <!-- DODO AI -->
+        <div class="person-card c-green">
+            <span class="person-label">Dodo — AI nástroje</span>
+            <h3>Marketing, video & HW</h3>
+            <ul class="task-list">
+                <li>
+                    <div class="task-icon">💬</div>
+                    <div class="task-text">
+                        <strong>Claude / ChatGPT</strong>
+                        <span>Stratégia, texty, kalkulácie, brainstorming</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🎬</div>
+                    <div class="task-text">
+                        <strong>Runway Gen-5 / Sora 2</strong>
+                        <span>AI generovanie videa — produktové ukážky, b-roll, reels</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🧑‍💼</div>
+                    <div class="task-text">
+                        <strong>HeyGen</strong>
+                        <span>AI avatar videá — prezentácie, sales outreach, multijazyčné</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🖨️</div>
+                    <div class="task-text">
+                        <strong>Kiln 3D (AI pre 3D tlač!)</strong>
+                        <span>AI agent ovláda 3D tlačiarne — slicing, monitoring, fleet management. Podporuje OctoPrint, Bambu, Klipper.</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">🎨</div>
+                    <div class="task-text">
+                        <strong>Canva + CapCut</strong>
+                        <span>Grafika, video editing, šablóny</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="task-icon">📅</div>
+                    <div class="task-text">
+                        <strong>Metricool</strong>
+                        <span>Plánovanie postov, analytika sociálnych sietí</span>
+                    </div>
+                </li>
+            </ul>
+            <div class="tools-grid">
+                <span class="tool-badge">Claude</span>
+                <span class="tool-badge">Runway Gen-5</span>
+                <span class="tool-badge">Sora 2</span>
+                <span class="tool-badge">HeyGen</span>
+                <span class="tool-badge">Kiln 3D</span>
+                <span class="tool-badge">Canva</span>
+                <span class="tool-badge">CapCut</span>
+                <span class="tool-badge">Metricool</span>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<!-- AI MODULY V BUSINESS FLOW AI — ROADMAPA -->
+<section class="section">
+    <div class="section-title">AI v Business Flow AI — Roadmapa do konca 2026</div>
+    <div class="section-subtitle">Vlastné AI moduly v našom softvéri. Žiadne externé automatizácie — všetko v jednom systéme s vlastnými dátami.</div>
+
+    <!-- PRINCÍP -->
+    <div style="display:grid; grid-template-columns:1fr auto 1fr auto 1fr; gap:1rem; align-items:center; margin-bottom:3rem;">
+        <div class="flow-step" style="border-color:rgba(99,102,241,.2);">
+            <div style="font-size:1.5rem; margin-bottom:.35rem;">🗄️</div>
+            <h4>Vlastné dáta</h4>
+            <p>Objednávky, ceny, klienti, procesy — všetko v Turso DB</p>
+        </div>
+        <div style="color:#475569; font-size:1.5rem;">→</div>
+        <div class="flow-step" style="border-color:rgba(168,85,247,.2);">
+            <div style="font-size:1.5rem; margin-bottom:.35rem;">🧠</div>
+            <h4>AI vrstva</h4>
+            <p>Claude / Gemini API analyzuje dáta, učí sa, navrhuje</p>
+        </div>
+        <div style="color:#475569; font-size:1.5rem;">→</div>
+        <div class="flow-step" style="border-color:rgba(34,197,94,.2);">
+            <div style="font-size:1.5rem; margin-bottom:.35rem;">📊</div>
+            <h4>Vlastné analýzy</h4>
+            <p>Štatistiky, odporúčania, predikcie — v dashboarde BF</p>
+        </div>
+    </div>
+
+    <!-- Q2 2026 -->
+    <div style="margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+            <div style="background:rgba(99,102,241,.15); color:#a5b4fc; font-size:.7rem; font-weight:700; padding:.3rem .75rem; border-radius:999px; text-transform:uppercase; letter-spacing:.08em;">Q2 2026 (apr–jún)</div>
+            <div style="flex:1; height:1px; background:rgba(99,102,241,.15);"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#a5b4fc; margin-bottom:.5rem;">📈 Cenové analýzy & flow cien</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Historický vývoj cien materiálov / produktov</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>AI detekcia cenových anomálií</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>Automatické porovnanie s trhom</li>
+                </ul>
+            </div>
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#a5b4fc; margin-bottom:.5rem;">📊 Vlastné štatistiky & dashboardy</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Obrat, marže, produktivita — z vlastných dát</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Trendy a porovnania (mesiac/rok)</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>Real-time prehľady pre Chlepka</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Q3 2026 -->
+    <div style="margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+            <div style="background:rgba(168,85,247,.15); color:#c4b5fd; font-size:.7rem; font-weight:700; padding:.3rem .75rem; border-radius:999px; text-transform:uppercase; letter-spacing:.08em;">Q3 2026 (júl–sep)</div>
+            <div style="flex:1; height:1px; background:rgba(168,85,247,.15);"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(168,85,247,.04); border:1px solid rgba(168,85,247,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#c4b5fd; margin-bottom:.5rem;">💡 AI odporúčania & tipy</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>"Táto zákazka má nízku maržu — zvýš cenu o 12%"</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>"Materiál X je o 20% lacnejší u dodávateľa Y"</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>"Klient Z neobjednal 3 mesiace — osloviť?"</li>
+                </ul>
+            </div>
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(168,85,247,.04); border:1px solid rgba(168,85,247,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#c4b5fd; margin-bottom:.5rem;">🔄 AI rady na zlepšenia procesov</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>"Proces X trvá priemerne 5 dní — bottleneck je krok 3"</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Automatické návrhy na optimalizáciu workflow</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>Porovnanie výkonu tímu / oddelení</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Q4 2026 -->
+    <div style="margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+            <div style="background:rgba(34,197,94,.15); color:#86efac; font-size:.7rem; font-weight:700; padding:.3rem .75rem; border-radius:999px; text-transform:uppercase; letter-spacing:.08em;">Q4 2026 (okt–dec)</div>
+            <div style="flex:1; height:1px; background:rgba(34,197,94,.15);"></div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(34,197,94,.04); border:1px solid rgba(34,197,94,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#86efac; margin-bottom:.5rem;">🧠 AI, ktoré sa učí (firemná pamäť)</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>AI si pamätá rozhodnutia, výsledky, chyby</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Zlepšuje odporúčania na základe spätnej väzby</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>Knowledge base firmy — automaticky rastie</li>
+                </ul>
+            </div>
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(34,197,94,.04); border:1px solid rgba(34,197,94,.1);">
+                <div style="font-weight:700; font-size:.85rem; color:#86efac; margin-bottom:.5rem;">🔗 Plná integrácia HW + SW</div>
+                <ul style="list-style:none; font-size:.78rem; color:#94a3b8;">
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>3D tlačiarne reportujú do Business Flow</li>
+                    <li style="padding-left:1rem; position:relative; margin-bottom:.2rem;"><span style="position:absolute;left:0;color:#475569;">→</span>Automatické kalkulácie na základe reálnych HW dát</li>
+                    <li style="padding-left:1rem; position:relative;"><span style="position:absolute;left:0;color:#475569;">→</span>Prediktívna údržba zariadení</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kto čo implementuje -->
+    <div style="margin-top:2.5rem;">
+        <div style="font-weight:700; font-size:1rem; margin-bottom:1rem; color:#f1f5f9;">Kto čo implementuje</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem;">
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.1);">
+                <div style="font-weight:700; font-size:.8rem; color:#a5b4fc; margin-bottom:.5rem;">⚡ Juraj stavia</div>
+                <ul style="list-style:none; font-size:.75rem; color:#94a3b8;">
+                    <li style="margin-bottom:.2rem;">→ AI moduly v kóde (API, DB, frontend)</li>
+                    <li style="margin-bottom:.2rem;">→ Dashboardy a vizualizácie</li>
+                    <li style="margin-bottom:.2rem;">→ Integrácie s Claude/Gemini API</li>
+                    <li>→ SW strana HW prepojení</li>
+                </ul>
+            </div>
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(34,197,94,.04); border:1px solid rgba(34,197,94,.1);">
+                <div style="font-weight:700; font-size:.8rem; color:#86efac; margin-bottom:.5rem;">📝 Dodo definuje</div>
+                <ul style="list-style:none; font-size:.75rem; color:#94a3b8;">
+                    <li style="margin-bottom:.2rem;">→ Pravidlá kalkulácií a procesov</li>
+                    <li style="margin-bottom:.2rem;">→ HW dáta a parametre</li>
+                    <li style="margin-bottom:.2rem;">→ Čo má AI odporúčať obchodníkom</li>
+                    <li>→ Testovanie HW integrácie</li>
+                </ul>
+            </div>
+            <div style="border-radius:.85rem; padding:1.25rem; background:rgba(251,191,36,.04); border:1px solid rgba(251,191,36,.1);">
+                <div style="font-weight:700; font-size:.8rem; color:#fcd34d; margin-bottom:.5rem;">🧪 Chlepko testuje</div>
+                <ul style="list-style:none; font-size:.75rem; color:#94a3b8;">
+                    <li style="margin-bottom:.2rem;">→ Overuje správnosť AI odporúčaní</li>
+                    <li style="margin-bottom:.2rem;">→ Feedback na dashboardy</li>
+                    <li style="margin-bottom:.2rem;">→ Reálne používanie v dennej práci</li>
+                    <li>→ Prioritizácia čo treba ďalej</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- RESEARCH: ZAUJÍMAVÉ NÁLEZY -->
+<section class="section">
+    <div class="section-title">Zaujímavé AI nálezy z researchu</div>
+    <div class="section-subtitle">Nástroje, ktoré stoja za pozornosť</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
+
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(34,197,94,.04); border:1px solid rgba(34,197,94,.15);">
+            <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;">
+                <div style="font-size:1.25rem;">🖨️</div>
+                <div style="font-weight:700; font-size:.95rem; color:#86efac;">Kiln 3D — AI agent pre 3D tlač</div>
+                <div style="font-size:.6rem; font-weight:600; padding:.2rem .5rem; border-radius:999px; background:rgba(34,197,94,.15); color:#86efac;">PRE DODA</div>
+            </div>
+            <div style="font-size:.8rem; color:#94a3b8; margin-bottom:.5rem;">Open-source platforma — AI agent ovláda 3D tlačiarne. Slicing, monitoring, fleet management. Podporuje OctoPrint, Bambu Lab, Klipper.</div>
+            <div style="font-size:.75rem; color:#64748b;">kiln3d.com — zadarmo, open-source</div>
+        </div>
+
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.15);">
+            <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;">
+                <div style="font-size:1.25rem;">🖥️</div>
+                <div style="font-weight:700; font-size:.95rem; color:#a5b4fc;">Manus AI — desktop agent</div>
+                <div style="font-size:.6rem; font-weight:600; padding:.2rem .5rem; border-radius:999px; background:rgba(251,191,36,.15); color:#fcd34d;">PRE CHLEPKA</div>
+            </div>
+            <div style="font-size:.8rem; color:#94a3b8; margin-bottom:.5rem;">Desktop app (Mac/Win) — automatizuje úlohy na počítači. Organizácia súborov, emaily, Google apps integrácia. Meta ho kúpilo za $2B.</div>
+            <div style="font-size:.75rem; color:#64748b;">manus.im — od $20/mes</div>
+        </div>
+
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(236,72,153,.04); border:1px solid rgba(236,72,153,.15);">
+            <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;">
+                <div style="font-size:1.25rem;">🎬</div>
+                <div style="font-weight:700; font-size:.95rem; color:#f9a8d4;">Runway Gen-5 vs Sora 2 vs Veo 3</div>
+                <div style="font-size:.6rem; font-weight:600; padding:.2rem .5rem; border-radius:999px; background:rgba(34,197,94,.15); color:#86efac;">PRE DODA</div>
+            </div>
+            <div style="font-size:.8rem; color:#94a3b8; margin-bottom:.5rem;">
+                <strong style="color:#94a3b8;">Runway</strong> ~$0.90/10s — najlepšia kreatívna kontrola, Director Mode<br>
+                <strong style="color:#94a3b8;">Sora 2</strong> ~$1.00/10s — najlepší realizmus, fyzika, 60s videá<br>
+                <strong style="color:#94a3b8;">Veo 3</strong> ~$2.50/10s — 4K, broadcast kvalita, najdrahší
+            </div>
+            <div style="font-size:.75rem; color:#64748b;">60s produkt video = ~$120 vs. $3000-5000 tradične</div>
+        </div>
+
+        <div style="border-radius:1rem; padding:1.5rem; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.15);">
+            <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;">
+                <div style="font-size:1.25rem;">🔌</div>
+                <div style="font-weight:700; font-size:.95rem; color:#a5b4fc;">Claude MCP (Model Context Protocol)</div>
+                <div style="font-size:.6rem; font-weight:600; padding:.2rem .5rem; border-radius:999px; background:rgba(99,102,241,.15); color:#a5b4fc;">PRE JURAJA</div>
+            </div>
+            <div style="font-size:.8rem; color:#94a3b8; margin-bottom:.5rem;">"USB pre AI" — pripojíš databázu, GitHub, API priamo do Cursoru. Claude potom vie queryovať DB, vytvárať PR, analyzovať dáta — všetko v jednom okne.</div>
+            <div style="font-size:.75rem; color:#64748b;">Zadarmo, konfigurácia cez .mcp.json</div>
+        </div>
+
+    </div>
+</section>
+
+<!-- FOOTER -->
+<section class="footer">
+    <div class="footer-quote">Všetko v jednom systéme. Vlastné dáta. Vlastná AI. Žiadne externé závislosti.</div>
+    <p>Chlepko riadi. Juraj stavia. Dodo inovuje a predáva. Business Flow AI spája všetko.</p>
+</section>
+
+<!-- AI CHAT WIDGET -->
+<style>
+.chat-fab{position:fixed;bottom:24px;right:24px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(99,102,241,.4);display:flex;align-items:center;justify-content:center;font-size:26px;z-index:9999;transition:transform .2s,box-shadow .2s}
+.chat-fab:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(99,102,241,.5)}
+.chat-fab.open{transform:rotate(45deg)}
+
+.chat-window{position:fixed;bottom:96px;right:24px;width:420px;max-height:580px;background:#12121a;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.5);display:none;flex-direction:column;z-index:9998;overflow:hidden;font-family:'Inter',sans-serif;border:1px solid rgba(255,255,255,.08)}
+.chat-window.visible{display:flex}
+
+.chat-header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.chat-header-dot{width:10px;height:10px;border-radius:50%;background:#4ade80;flex-shrink:0}
+.chat-header-info h4{margin:0;font-size:14px;font-weight:600}
+.chat-header-info span{font-size:11px;opacity:.6}
+
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:280px;max-height:380px;background:#0f0f18}
+.chat-msg{max-width:85%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.55;word-wrap:break-word;white-space:pre-wrap}
+.chat-msg.bot{background:rgba(99,102,241,.1);color:#e0e0e0;align-self:flex-start;border:1px solid rgba(99,102,241,.15);border-bottom-left-radius:4px}
+.chat-msg.user{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-msg.typing{background:rgba(99,102,241,.08);color:#64748b;font-style:italic;align-self:flex-start;border:1px solid rgba(99,102,241,.1);border-bottom-left-radius:4px}
+
+.chat-suggestions{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px;background:#0f0f18}
+.chat-suggestions button{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);color:#a5b4fc;padding:6px 12px;border-radius:20px;font-size:11px;cursor:pointer;transition:background .15s;font-family:'Inter',sans-serif}
+.chat-suggestions button:hover{background:rgba(99,102,241,.18)}
+
+.chat-input-area{display:flex;padding:12px;border-top:1px solid rgba(255,255,255,.06);gap:8px;background:#12121a}
+.chat-input-area input{flex:1;border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:10px 16px;font-size:13px;outline:none;font-family:'Inter',sans-serif;background:#0a0a12;color:#e0e0e0;transition:border-color .15s}
+.chat-input-area input:focus{border-color:rgba(99,102,241,.5)}
+.chat-input-area input::placeholder{color:#475569}
+.chat-input-area button{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:opacity .15s}
+.chat-input-area button:disabled{opacity:.3;cursor:default}
+
+@media(max-width:480px){
+    .chat-window{right:8px;left:8px;bottom:88px;width:auto;max-height:70vh}
+    .chat-fab{bottom:16px;right:16px}
+}
+</style>
+
+<button class="chat-fab" id="chatFab" title="AI Asistent">💬</button>
+
+<div class="chat-window" id="chatWindow">
+    <div class="chat-header">
+        <div class="chat-header-dot"></div>
+        <div class="chat-header-info">
+            <h4>ADSUN AI Asistent</h4>
+            <span>Tím, úlohy, plány, stratégia</span>
+        </div>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg bot">Ahoj! Som AI asistent pre tím ADSUN. Viem o rozdelení úloh, kto čo robí, aké nástroje používame, roadmape Business Flow AI, aj o stratégii firmy. Spýtaj sa ma.</div>
+    </div>
+    <div class="chat-suggestions" id="chatSuggestions">
+        <button onclick="askSuggestion(this)">Kto čo robí v tíme?</button>
+        <button onclick="askSuggestion(this)">Ako fungujú Ads?</button>
+        <button onclick="askSuggestion(this)">AI roadmapa 2026</button>
+        <button onclick="askSuggestion(this)">Pravidlá — kto čo nerobí</button>
+    </div>
+    <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="Napíš otázku..." autocomplete="off">
+        <button id="chatSend" title="Odoslať">➤</button>
+    </div>
+</div>
+
+<script>
+(function() {
+    const GEMINI_KEY = 'AIzaSyC72cfY5ydBtyB5RmSIx55EgFQQtwLhHx0';
+    const MODEL = 'gemini-2.5-flash';
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`;
+
+    const SYSTEM = `Si AI asistent plánovacieho webu "Rozdelenie úloh" pre tím ADSUN. Odpovedaj stručne, vecne a po slovensky.
+
+=== TÍM (3 ľudia, jasné kompetencie, žiadne prekrývanie) ===
+
+JURA CHLEPKO — CEO / Operations (farba: amber/žltá)
+Úlohy: Riadi firmu, komunikuje so zamestnancami, financie, sťahovanie do nových priestorov, celá agenda riadenia. Testuje Business Flow, dáva spätnú väzbu. Čiastočne aj obchod (~30%).
+Nástroje: Business Flow AI, Email, Fakturácia, Telefón, Claude/ChatGPT, Manus AI (desktop agent), Whisper/Otter.ai
+NEROBÍ: Nekóduje, nehýbe sa v Cursore. Nevymýšľa ads stratégiu/kreativitu. Nenastavuje 3D tlačiarne ani HW. Netočí a nepromptuje videá.
+
+JURAJ MARTINKOVYCH — CTO / Software (farba: modrá)
+Úlohy: Stavia softvér (Business Flow AI), prerobenie firemného webu, technicky nastavuje ads cez Cursor, AI integrácie, GEO optimalizácia (Schema.org, štruktúrované dáta), SW strana prepojenia s HW. Obchod ~10%.
+Nástroje: Cursor (agentický vývoj), Next.js, TypeScript, Vercel, Turso, Claude MCP, Claude/Gemini API, Jalza (vlastný agent), Google Ads/GTM, Schema.org
+NEROBÍ: Nevymýšľa ads stratégiu/cieľovky. Nepíše copy/nepromptuje videá. Neriadi firmu/zamestnancov. Nenastavuje hardvér fyzicky.
+
+JOZEF TOMÁŠEK "DODO" — Hardware + Marketing (farba: zelená)
+Úlohy: Projekty a kalkulácie svetelných reklám, hlavný obchodník (~60%). 3D tlač, HW inovácie. Ads stratégia a štruktúra, video prompting, copywriting, obsahový plán. Navrhuje ČO a PREČO, Juraj nastavuje technicky. Spolu s tímom spisuje pravidlá do Business Flow.
+Nástroje: 3D tlačiarne, CAD/Slicer, Claude/ChatGPT, Canva, CapCut, Runway Gen-5, Sora 2, HeyGen, Kiln 3D, Metricool, Business Flow AI
+NEROBÍ: Nekóduje softvér/web. Nenastavuje ads tracking technicky. Nerobí financie/fakturáciu. Neriadi zamestnancov.
+
+=== OBCHOD — KTO KOĽKO ===
+Dodo (Tomášek): ~60% — hlavný obchodník, projekty, kalkulácie, akvizícia, ponuky
+Chlepko: ~30% — existujúci klienti, vzťahy, zákaznícky servis
+Juraj: ~10% — technické konzultácie, príležitostná komunikácia
+
+=== ADS WORKFLOW ===
+1. Dodo navrhne stratégiu (cieľovka, kampane, copy, vizuály, video)
+2. Chlepko odsúhlasí budget (financie, rozpočet, ROI očakávania)
+3. Juraj nastaví technicky (pixel, tracking, konverzie, GTM — cez Cursor)
+4. Dodo vyhodnotí metriky (čo funguje, kam budget, A/B výsledky)
+5. Juraj optimalizuje (úprava trackingu, audience, landing page)
+
+=== SW + HW PREPOJENIE ===
+Dodo = HW strana (3D tlačiarne, svetelné reklamy, senzory, zariadenia, výrobné technológie)
+Juraj = SW strana (API, dashboard, monitoring, automatizácia, Business Flow integrácia)
+Spoločne spisujú pravidlá do Business Flow (výrobné procesy, pravidlá pre 3D tlač, workflow svetelných reklám)
+
+=== GEO — AI SEARCH OPTIMIZATION ===
+Aby AI nástroje (ChatGPT, Gemini, Perplexity) odporúčali firmu ADSUN.
+Juraj (technicky): Schema.org, FAQ sekcie, strojovo čitateľné popisy, Google Business Profile, SEO web (Next.js SSR)
+Dodo (obsah): Recenzie, články, blog, zmienky na externých weboch, case studies, video na YouTube
+Chlepko (podpora): Feedback od klientov, referenčné kontakty, reálne otázky pre FAQ
+
+=== BUSINESS FLOW AI — CENTRÁLNY HUB ===
+Chlepko: Testuje & feedback
+Juraj: Stavia & rozvíja
+Dodo: Pravidlá, HW data & obsah
+"Všetko v jednom systéme. Vlastné dáta. Vlastná AI. Žiadne externé závislosti."
+
+=== PLÁN UČENIA ===
+Týždeň 1-2: Chlepko — BF onboarding. Juraj — Web + ads základ. Dodo — Video prompting + HW procesy.
+Mesiac 1-2: Chlepko — Procesná optimalizácia. Juraj — AI viditeľnosť & prepojenia. Dodo — Pokročilý marketing + HW inovácie.
+
+=== AI ROADMAPA BUSINESS FLOW 2026 ===
+Q2 (apr-jún): Cenové analýzy & flow cien + Vlastné štatistiky & dashboardy
+Q3 (júl-sep): AI odporúčania & tipy + AI rady na zlepšenie procesov
+Q4 (okt-dec): AI ktoré sa učí (firemná pamäť) + Plná integrácia HW+SW
+Juraj stavia (AI moduly, dashboardy, API). Dodo definuje (pravidlá, HW dáta, čo má AI odporúčať). Chlepko testuje (správnosť, feedback, prioritizácia).
+
+=== ZAUJÍMAVÉ AI NÁLEZY ===
+Kiln 3D (pre Doda): Open-source AI agent pre 3D tlač, OctoPrint/Bambu/Klipper. Zadarmo.
+Manus AI (pre Chlepka): Desktop agent, organizácia súborov, emaily. Od $20/mes. Meta kúpilo za $2B.
+Runway Gen-5 vs Sora 2 vs Veo 3 (pre Doda): Runway ~$0.90/10s, Sora ~$1.00/10s, Veo ~$2.50/10s. 60s video ~$120.
+Claude MCP (pre Juraja): "USB pre AI" — prepojenie DB, GitHub, API priamo v Cursore. Zadarmo.
+
+=== ADSUN FIRMA ===
+AD SUN s.r.o., Pezinok. Reklamná výroba — polepy áut, svetelné reklamy, tlač, 3D tlač.
+Tržby: AD SUN 800k €, WRAPBOYS 344k €. Cieľ 2026: rast +33%.
+Ďalší tím: Simona Jurčíková (účtovníctvo), Myška (grafička), Matej Šejc (obchodník), Máte Dexler (tlačiar), Brano+Zolo (výroba), Ondraj (inštalácie).`;
+
+    const chatHistory = [];
+
+    const fab = document.getElementById('chatFab');
+    const win = document.getElementById('chatWindow');
+    const msgs = document.getElementById('chatMessages');
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('chatSend');
+    const suggestions = document.getElementById('chatSuggestions');
+    let busy = false;
+
+    fab.addEventListener('click', () => {
+        const open = win.classList.toggle('visible');
+        fab.classList.toggle('open', open);
+        fab.textContent = open ? '✕' : '💬';
+        if (open) input.focus();
+    });
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !busy) send();
+    });
+    sendBtn.addEventListener('click', () => { if (!busy) send(); });
+
+    window.askSuggestion = function(btn) {
+        input.value = btn.textContent;
+        suggestions.style.display = 'none';
+        send();
+    };
+
+    function addMsg(text, role) {
+        const div = document.createElement('div');
+        div.className = 'chat-msg ' + role;
+        div.textContent = text;
+        msgs.appendChild(div);
+        msgs.scrollTop = msgs.scrollHeight;
+        return div;
+    }
+
+    async function send() {
+        const q = input.value.trim();
+        if (!q) return;
+        input.value = '';
+        busy = true;
+        sendBtn.disabled = true;
+        suggestions.style.display = 'none';
+
+        addMsg(q, 'user');
+        chatHistory.push({ role: 'user', parts: [{ text: q }] });
+        const typing = addMsg('Premyslam...', 'typing');
+
+        try {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    system_instruction: { parts: [{ text: SYSTEM }] },
+                    contents: chatHistory,
+                    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+                })
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error?.message || 'Gemini error ' + res.status);
+            }
+
+            const data = await res.json();
+            const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Nemam odpoved.';
+            typing.remove();
+            addMsg(answer, 'bot');
+            chatHistory.push({ role: 'model', parts: [{ text: answer }] });
+        } catch (e) {
+            typing.remove();
+            addMsg('Chyba: ' + e.message, 'bot');
+        }
+
+        busy = false;
+        sendBtn.disabled = false;
+        input.focus();
+    }
+})();
+</script>
+
+</body>
+</html>

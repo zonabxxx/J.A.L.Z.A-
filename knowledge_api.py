@@ -579,6 +579,22 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "ok"})
             return
 
+        if self.path.startswith("/public/"):
+            import mimetypes
+            safe = self.path.replace("..", "").lstrip("/")
+            fpath = os.path.join(BASE_DIR, safe)
+            if os.path.isfile(fpath):
+                mime, _ = mimetypes.guess_type(fpath)
+                self.send_response(200)
+                self.send_header("Content-Type", mime or "text/html; charset=utf-8")
+                self._cors_headers()
+                self.end_headers()
+                with open(fpath, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self._send_json({"error": "Not found"}, 404)
+            return
+
         if self.path == "/auth/check":
             conn = sqlite3.connect(CONVERSATIONS_DB)
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
