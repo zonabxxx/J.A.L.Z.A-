@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { jalzaAIText } from "@/lib/api-client";
 
 export async function POST(req: NextRequest) {
-  const { prompt, systemPrompt } = await req.json();
+  const { prompt, systemPrompt, task_type } = await req.json();
 
   const messages: { role: string; content: string }[] = [];
   if (systemPrompt) {
@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     messages,
     temperature: 0.3,
     max_tokens: 1024,
+    ...(task_type && { task_type }),
   });
 
   if (!text) {

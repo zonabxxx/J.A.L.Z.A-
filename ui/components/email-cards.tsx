@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { EmailData } from "@/lib/hooks";
 import { useMailboxes } from "@/lib/mailboxes";
 
 interface Props {
   emails: EmailData[];
   mailbox?: string;
+  todayFilter?: boolean;
   onMailboxChange?: (mailbox: string) => void;
   onReadEmail?: (index: number) => void;
 }
@@ -56,19 +57,55 @@ function extractName(from: string): string {
   return name || extractEmail(from);
 }
 
-export default function EmailCards({ emails, mailbox, onMailboxChange, onReadEmail }: Props) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toEmailData(e: any): EmailData {
+  const from = e.from
+    || (e.sender_email ? `${e.sender || ""} <${e.sender_email}>`.trim() : e.sender)
+    || e.sender?.emailAddress?.address
+    || "?";
+  return {
+    from,
+    subject: e.subject || "(bez predmetu)",
+    date: e.date || e.receivedDateTime || "",
+    snippet: e.snippet || e.bodyPreview || e.body?.slice?.(0, 200) || "",
+    id: e.id || e.messageId || undefined,
+    unread: e.isRead === false || e.is_read === false,
+  };
+}
+
+export default function EmailCards({ emails: initialEmails, mailbox, todayFilter, onMailboxChange, onReadEmail }: Props) {
   const MAILBOXES = useMailboxes();
   const [activeMailbox, setActiveMailbox] = useState(mailbox || MAILBOXES[0]?.id || "personal");
+  const [emails, setEmails] = useState<EmailData[]>(initialEmails);
+  const [loading, setLoading] = useState(false);
   const currentMb = MAILBOXES.find(m => m.id === activeMailbox) || MAILBOXES[0];
+
+  const fetchEmails = useCallback(async (mbId: string) => {
+    setLoading(true);
+    try {
+      const today = todayFilter ?? false;
+      const res = await fetch(`/api/email?today=${today}&limit=30&mailbox=${mbId}`);
+      const data = await res.json();
+      if (data.emails) {
+        setEmails(data.emails.map(toEmailData));
+      } else {
+        setEmails([]);
+      }
+    } catch {
+      setEmails([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [todayFilter]);
 
   const handleSwitch = (mbId: string) => {
     setActiveMailbox(mbId);
+    fetchEmails(mbId);
     onMailboxChange?.(mbId);
   };
 
   return (
     <div className="space-y-2 w-full">
-      {/* Mailbox tabs */}
       {onMailboxChange && (
         <div className="flex gap-1 mb-2">
           {MAILBOXES.map(mb => (
@@ -90,13 +127,22 @@ export default function EmailCards({ emails, mailbox, onMailboxChange, onReadEma
 
       <div className="flex items-center justify-between">
         <span className="text-[11px] text-zinc-500 font-medium">
-          {currentMb.icon} {currentMb.email} — {emails.length} {emails.length === 1 ? "email" : "emailov"}
+          {currentMb.icon} {currentMb.email} — {loading ? "..." : `${emails.length} ${emails.length === 1 ? "email" : "emailov"}`}
         </span>
+        {todayFilter && (
+          <span className="text-[10px] bg-blue-600/20 text-blue-400 px-2 py-0.5 rounded-full">
+            dnes
+          </span>
+        )}
       </div>
 
-      {emails.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-6 text-zinc-500 text-sm animate-pulse">
+          Načítavam emaily...
+        </div>
+      ) : emails.length === 0 ? (
         <div className="text-center py-6 text-zinc-500 text-sm">
-          Žiadne emaily v tejto schránke
+          {todayFilter ? "Dnes žiadne nové emaily" : "Žiadne emaily v tejto schránke"}
         </div>
       ) : (
         <div className="space-y-1.5">

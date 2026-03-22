@@ -89,6 +89,7 @@ export interface ChatMessage extends Message {
   route?: RouteResult;
   emails?: EmailData[];
   mailbox?: string;
+  todayFilter?: boolean;
   generatedImage?: string;
   uploadedImage?: string;
   calendarEvents?: CalendarEventData[];
@@ -229,11 +230,12 @@ export function useChat(activeAgent: Agent | null) {
     route: RouteResult,
     msgs: ChatMessage[],
     convId: string | null,
-    extras?: { emails?: EmailData[]; mailbox?: string }
+    extras?: { emails?: EmailData[]; mailbox?: string; todayFilter?: boolean }
   ) => {
     const msg: ChatMessage = { role: "assistant", content: text, route };
     if (extras?.emails) msg.emails = extras.emails;
     if (extras?.mailbox) msg.mailbox = extras.mailbox;
+    if (extras?.todayFilter !== undefined) msg.todayFilter = extras.todayFilter;
     const finalMsgs: ChatMessage[] = [...msgs, msg];
     setMessages(finalMsgs);
     debouncedSave(finalMsgs, convId);
@@ -301,7 +303,7 @@ export function useChat(activeAgent: Agent | null) {
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt, prompt }),
+        body: JSON.stringify({ systemPrompt, prompt, task_type: "email_intent" }),
       });
       if (!res.ok) return null;
       const data = await res.json();
@@ -477,7 +479,7 @@ export function useChat(activeAgent: Agent | null) {
       }
 
       const emailCards: EmailData[] = emails.map(toEmailData);
-      emailReply("", route, updatedMessages, convId, { emails: emailCards, mailbox });
+      emailReply("", route, updatedMessages, convId, { emails: emailCards, mailbox, todayFilter: today });
     } catch {
       emailReply("Nepodarilo sa načítať emaily. Skontroluj pripojenie.", route, updatedMessages, convId);
     }

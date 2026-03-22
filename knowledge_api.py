@@ -546,7 +546,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
     def _route_to_gemini(self, body: dict):
         gemini_key = os.environ.get("GEMINI_API_KEY", "")
         if not gemini_key:
-            self._send_json({"error": "GEMINI_API_KEY not configured"}, 500)
+            logger.warning("GEMINI_API_KEY not configured, falling back to Ollama")
+            body["model"] = "jalza:latest"
+            self._route_to_ollama(body)
             return
         try:
             import requests as req
@@ -560,6 +562,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 stream=True,
                 timeout=120,
             )
+            if resp.status_code in (401, 403):
+                resp.close()
+                logger.warning(f"Gemini auth failed ({resp.status_code}), falling back to Ollama")
+                body["model"] = "jalza:latest"
+                self._route_to_ollama(body)
+                return
             self.send_response(resp.status_code)
             ct = resp.headers.get("Content-Type", "application/json")
             self.send_header("Content-Type", ct)
@@ -571,8 +579,13 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     self.wfile.write(chunk)
                     self.wfile.flush()
         except Exception as e:
-            logger.error(f"AI Router → Gemini error: {e}")
-            self._send_json({"error": f"Gemini nedostupné: {e}"}, 502)
+            logger.error(f"AI Router → Gemini error: {e}, falling back to Ollama")
+            body["model"] = "jalza:latest"
+            try:
+                self._route_to_ollama(body)
+            except Exception as e2:
+                logger.error(f"AI Router → Ollama fallback also failed: {e2}")
+                self._send_json({"error": f"Gemini aj Ollama nedostupné: {e}, {e2}"}, 502)
 
     def do_GET(self):
         if self.path == "/health":

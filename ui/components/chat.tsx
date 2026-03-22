@@ -441,10 +441,8 @@ export default function Chat({
                   <EmailCards
                     emails={msg.emails}
                     mailbox={msg.mailbox}
-                    onMailboxChange={(mb) => {
-                      const cmd = mb === "adsun" ? "adsun maily" : mb === "juraj" ? "juraj maily" : "moje maily";
-                      onSend(cmd);
-                    }}
+                    todayFilter={msg.todayFilter}
+                    onMailboxChange={() => {}}
                     onReadEmail={(idx) => {
                       const email = msg.emails![idx - 1];
                       if (email?.id && msg.mailbox && onReadEmail) {
