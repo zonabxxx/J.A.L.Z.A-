@@ -24,7 +24,7 @@ function checkRate(ip: string): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname.startsWith("/api/auth")) {
+  if (pathname.startsWith("/api/auth") || pathname.startsWith("/api/web-chat")) {
     return NextResponse.next();
   }
 
