@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       ],
       task_type: "classify",
       temperature: 0,
-      max_tokens: 10,
+      max_tokens: 256,
     });
 
     return NextResponse.json({ route: parseRoute(result) });

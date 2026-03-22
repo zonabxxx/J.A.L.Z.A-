@@ -694,8 +694,9 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
             try:
                 import requests as req
                 endpoint = "streamGenerateContent?alt=sse" if stream else "generateContent"
+                url_sep = "&" if "?" in endpoint else "?"
                 resp = req.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:{endpoint}&key={gemini_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:{endpoint}{url_sep}key={gemini_key}",
                     json={
                         "contents": contents,
                         "tools": [{"google_search": {}}],
