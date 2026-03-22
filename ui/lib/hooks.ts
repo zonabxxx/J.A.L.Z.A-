@@ -18,10 +18,11 @@ function buildEmailSystemPrompt(mailboxes: Mailbox[]): string {
   const mbList = buildMailboxPromptContext(mailboxes);
   return `Si JSON parser pre emailové príkazy. VŽDY odpovedz IBA platným JSON objektom, nič iné.
 
-INTENT typy: "send", "list", "search", "read", "reply", "cleanup"
+INTENT typy: "chat", "send", "list", "search", "read", "reply", "cleanup"
 
 POLIA:
 - "intent": (povinné) jeden z typov vyššie
+- "response": (pre "chat") tvoja odpoveď po slovensky
 - "today": true ak spomína "dnes", "dnešné", "dnešného dňa", "today"
 - "limit": počet emailov ak je uvedený
 - "mailbox": ID schránky (${mbList})
@@ -32,19 +33,22 @@ POLIA:
 - "subject": predmet emailu pre send
 - "body": text emailu pre send
 
+PRAVIDLÁ:
+- Ak sa používateľ PÝTA otázku ("môžem?", "vieš?", "ako?") → použi "chat" a odpovedz
+- Ak chce poslať mail ale chýba adresa/predmet/text → použi "chat" a opýtaj sa čo chýba
+- Ak dáva jasný príkaz → použi príslušný intent
+
 PRÍKLADY:
 "maily z dneška" → {"intent":"list","today":true}
 "juraj maily z dneška" → {"intent":"list","today":true,"mailbox":"juraj"}
 "adsun maily" → {"intent":"list","mailbox":"adsun"}
-"posledné 3 maily" → {"intent":"list","limit":3}
-"maily od Petra" → {"intent":"list","filter":"Peter"}
 "prečítaj mail 3" → {"intent":"read","number":3}
 "hľadaj faktúra" → {"intent":"search","query":"faktúra"}
 "odpovedz na 1" → {"intent":"reply","number":1}
 "pošli mail na info@firma.sk predmet Test text Ahoj" → {"intent":"send","to":"info@firma.sk","subject":"Test","body":"Ahoj"}
 "vymaž spam" → {"intent":"cleanup"}
-"vypíš všetky maily z dneška ktoré prišli na juraj@adsun.sk" → {"intent":"list","today":true,"mailbox":"juraj"}
-"Ideš na maily z mailu juraj@adsun.sk" → {"intent":"list","mailbox":"juraj"}
+"vieš posielať maily?" → {"intent":"chat","response":"Áno, viem posielať, čítať a vyhľadávať emaily. Čo potrebuješ?"}
+"napíš mail" → {"intent":"chat","response":"Komu mám poslať mail? Povedz mi adresu, predmet a čo chceš napísať."}
 
 DÔLEŽITÉ: Odpovedz IBA JSON. Žiadny text pred ani za JSON.`;
 }
@@ -367,6 +371,13 @@ export function useChat(activeAgent: Agent | null) {
 
     lastMailboxRef.current = mailbox;
 
+    // ── CHAT (conversational response) ──
+    if (action === "chat") {
+      const response = (intent.response as string) || "Ako ti môžem pomôcť s emailami?";
+      emailReply(response, route, updatedMessages, convId);
+      return;
+    }
+
     // ── SEND ──
     if (action === "send") {
       const parsed = parseEmailCommand(userText);
@@ -529,12 +540,16 @@ export function useChat(activeAgent: Agent | null) {
     const calPrompt = `Analyzuj konverzáciu o kalendári a vráť JSON.
 
 TYPY AKCIÍ:
+- "chat" — používateľ sa PÝTA otázku, chce konverzovať, alebo nemá dosť info na akciu. Odpovedz mu.
+- "need_details" — používateľ chce vytvoriť udalosť, ale CHÝBAJÚ mu dôležité detaily (čo, kedy). Opýtaj sa.
 - "list" — zobraziť udalosti
-- "create" — vytvoriť novú udalosť
+- "create" — vytvoriť novú udalosť (iba ak je jasný PREDMET aj DÁTUM)
 - "delete" — zmazať udalosť
 - "search" — hľadať udalosť
 
 FORMÁTY:
+Pre "chat": {"action":"chat","response":"...tvoja odpoveď po slovensky..."}
+Pre "need_details": {"action":"need_details","response":"...opýtaj sa čo chýba...","partial":{"subject":"...","date":"..."}}
 Pre "list": {"action":"list","period":"today"|"week"|"month"}
 Pre "create": {"action":"create","subject":"...","date":"YYYY-MM-DD","time":"HH:MM","duration_hours":1,"location":"...","body":"...","attendees":["email1",...]}
 Pre "delete": {"action":"delete","number":1}
@@ -542,14 +557,13 @@ Pre "search": {"action":"search","query":"..."}
 
 PRAVIDLÁ:
 - Dnešný dátum: ${now.toISOString().slice(0, 10)} (${todayName})
-- Ak používateľ povie "pondelok", mysli NAJBLIŽŠÍ pondelok (ak dnes je sobota 7.3., tak pondelok = 2026-03-09).
-- Ak spomína firmu alebo adresu, daj ju do "location".
-- Ak spomína osoby, daj ich mená do "subject" (napr. "Stretnutie s Michalom Plachým").
-- Ak spomína popis alebo poznámku, daj to do "body".
-- "attendees" nechaj prázdne ak nie sú emaily.
-- Ak nespomína čas, použi 09:00 ako default.
-- AK POUŽÍVATEĽ POVIE "áno", "pridaj", "potvrď" alebo podobne — pozri sa na PREDCHÁDZAJÚCU konverzáciu a vytiahni detaily odtiaľ.
-- NIKDY nevracaj "subject":"Nová udalosť" ak v konverzácii sú konkrétne informácie.
+- Ak používateľ sa PÝTA (napr. "viem tu...?", "môžem...?", "ako...?") → použi "chat" a odpovedz mu
+- Ak používateľ chce vytvoriť ale nepovie ČO konkrétne alebo KEDY → použi "need_details" a opýtaj sa na detaily
+- NIKDY nevymýšľaj predmet alebo čas — ak ti ho používateľ nepovedal, použi "need_details"
+- Použi "create" IBA keď máš jasný predmet A dátum/čas od používateľa
+- Ak povie "pondelok", mysli NAJBLIŽŠÍ pondelok
+- Ak spomína firmu/adresu → "location", osoby → "subject", popis → "body"
+- AK POUŽÍVATEĽ POVIE "áno" alebo "potvrď" — pozri sa na PREDCHÁDZAJÚCU konverzáciu
 
 KONVERZÁCIA:
 ${recentContext}
@@ -572,6 +586,13 @@ Odpovedz IBA JSON, nič iné.`;
     }
 
     const action = (intent.action as string) || "list";
+
+    // ── CHAT (conversational response) ──
+    if (action === "chat" || action === "need_details") {
+      const response = (intent.response as string) || "Áno, môžem ti pomôcť s kalendárom. Povedz mi čo potrebuješ.";
+      calendarReply(response, route, updatedMessages, convId);
+      return;
+    }
 
     // ── CREATE ──
     if (action === "create") {
