@@ -22,10 +22,16 @@
         .hero {
             min-height: 100vh; display: flex; align-items: center; justify-content: center;
             text-align: center; padding: 2rem; position: relative;
-            background: radial-gradient(ellipse at 20% 30%, rgba(251,191,36,.1) 0%, transparent 50%),
-                        radial-gradient(ellipse at 80% 20%, rgba(99,102,241,.1) 0%, transparent 50%),
+            background: url('https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1920&q=80') center/cover no-repeat;
+        }
+        .hero::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(10,10,15,.82) 0%, rgba(10,10,15,.65) 40%, rgba(10,10,15,.88) 100%),
+                        radial-gradient(ellipse at 20% 30%, rgba(251,191,36,.12) 0%, transparent 50%),
+                        radial-gradient(ellipse at 80% 20%, rgba(99,102,241,.12) 0%, transparent 50%),
                         radial-gradient(ellipse at 50% 80%, rgba(34,197,94,.08) 0%, transparent 50%);
         }
+        .hero > * { position: relative; z-index: 1; }
         .hero h1 {
             font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 900;
             letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 1rem;
@@ -77,8 +83,21 @@
         .c-blue .person-label  { background: rgba(99,102,241,.15); color: #a5b4fc; }
         .c-green .person-label { background: rgba(34,197,94,.15); color: #86efac; }
 
+        .person-avatar {
+            width: 64px; height: 64px; border-radius: 50%; margin-bottom: 1rem;
+            object-fit: cover; border: 2px solid rgba(255,255,255,.1);
+        }
+        .c-amber .person-avatar { box-shadow: 0 0 20px rgba(251,191,36,.2); }
+        .c-blue .person-avatar  { box-shadow: 0 0 20px rgba(99,102,241,.2); }
+        .c-green .person-avatar { box-shadow: 0 0 20px rgba(34,197,94,.2); }
+
         .person-card h3 { font-size: 1.25rem; font-weight: 800; margin-bottom: .3rem; }
         .person-card .role-desc { color: #94a3b8; margin-bottom: 1.25rem; font-size: .85rem; }
+
+        .section-image {
+            width: 100%; max-height: 280px; object-fit: cover; border-radius: 1.25rem;
+            margin-bottom: 3rem; opacity: .7; border: 1px solid rgba(255,255,255,.06);
+        }
 
         .task-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
         .task-list li {
@@ -262,6 +281,7 @@
 
         <!-- CHLEPKO -->
         <div class="person-card c-amber">
+            <img class="person-avatar" src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=128&h=128&fit=crop&crop=face" alt="Chlepko">
             <span class="person-label">CEO / Operations</span>
             <h3>Jura Chlepko</h3>
             <p class="role-desc">Riadi firmu, komunikuje so zamestnancami, financie, sťahovanie do nových priestorov, celá agenda okolo riadenia. Testuje Business Flow, dáva spätnú väzbu. Silný výkon a exekúcia. Čiastočne aj obchod.</p>
@@ -326,6 +346,7 @@
 
         <!-- MARTINKOVYCH -->
         <div class="person-card c-blue">
+            <img class="person-avatar" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=face" alt="Juraj">
             <span class="person-label">CTO / Software</span>
             <h3>Juraj Martinkovych</h3>
             <p class="role-desc">Stavia softvér, prerobenie webu, technicky nastavuje ads cez Cursor agenticky, AI integrácie, GEO optimalizácia, SW strana prepojenia s HW. Čiastočne aj obchod (~10%).</p>
@@ -394,6 +415,7 @@
 
         <!-- DODO / TOMÁŠEK -->
         <div class="person-card c-green">
+            <img class="person-avatar" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=128&h=128&fit=crop&crop=face" alt="Dodo">
             <span class="person-label">Hardware + Marketing</span>
             <h3>Jozef Tomášek (Dodo)</h3>
             <p class="role-desc">Projekty a kalkulácie svetelných reklám, obchodník. 3D tlač, HW inovácie + ads stratégia, video prompting, obsahový plán. Navrhuje ČO a PREČO, Juraj nastavuje technicky. Spolu s tímom spisuje pravidlá do Business Flow.</p>
@@ -480,6 +502,7 @@
 
 <!-- OBCHOD ROZDELENIE -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1200&h=400&fit=crop" alt="Team collaboration">
     <div class="section-title">Obchod — kto koľko</div>
     <div class="section-subtitle">Obchod robia traja, ale v rôznej miere</div>
 
@@ -538,6 +561,7 @@
 
 <!-- SW + HW -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&h=400&fit=crop" alt="Technology and hardware">
     <div class="section-title">SW + HW prepojenie</div>
     <div class="section-subtitle">Dodo (HW) a Juraj (SW) spolu posúvajú firmu na novú úroveň</div>
 
@@ -562,6 +586,7 @@
 
 <!-- GEO -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200&h=400&fit=crop" alt="AI and search optimization">
     <div class="section-title">AI Search Optimization (GEO)</div>
     <div class="section-subtitle">Aby AI nástroje odporúčali vašu firmu</div>
 
@@ -769,6 +794,7 @@
 
 <!-- AI NÁSTROJE PRE KAŽDÉHO -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=1200&h=400&fit=crop" alt="AI and robotics">
     <div class="section-title">AI nástroje — kto čo používa</div>
     <div class="section-subtitle">Žiadny n8n, žiadny Zapier. Všetko cez vlastný softvér + individuálne AI nástroje pre dennú prácu.</div>
 
@@ -924,6 +950,7 @@
 
 <!-- AI MODULY V BUSINESS FLOW AI — ROADMAPA -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&h=400&fit=crop" alt="Data and technology roadmap">
     <div class="section-title">AI v Business Flow AI — Roadmapa do konca 2026</div>
     <div class="section-subtitle">Vlastné AI moduly v našom softvéri. Žiadne externé automatizácie — všetko v jednom systéme s vlastnými dátami.</div>
 
@@ -1063,6 +1090,7 @@
 
 <!-- RESEARCH: ZAUJÍMAVÉ NÁLEZY -->
 <section class="section">
+    <img class="section-image" src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=1200&h=400&fit=crop" alt="AI brain neural network">
     <div class="section-title">Zaujímavé AI nálezy z researchu</div>
     <div class="section-subtitle">Nástroje, ktoré stoja za pozornosť</div>
 
@@ -1116,6 +1144,9 @@
 </section>
 
 <!-- FOOTER -->
+<div style="max-width:1200px; margin:0 auto; padding:0 2rem;">
+    <img class="section-image" src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=1200&h=300&fit=crop" alt="Team success" style="margin-bottom:0;">
+</div>
 <section class="footer">
     <div class="footer-quote">Všetko v jednom systéme. Vlastné dáta. Vlastná AI. Žiadne externé závislosti.</div>
     <p>Chlepko riadi. Juraj stavia. Dodo inovuje a predáva. Business Flow AI spája všetko.</p>
