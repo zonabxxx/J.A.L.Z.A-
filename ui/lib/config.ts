@@ -1,5 +1,4 @@
 export const KNOWLEDGE_API_URL = process.env.KNOWLEDGE_API_URL || "http://localhost:8765";
-export const KNOWLEDGE_API_FALLBACK = process.env.KNOWLEDGE_API_FALLBACK || "";
 export const DEFAULT_MODEL = "jalza";
 export const JALZA_API_TOKEN = process.env.JALZA_API_TOKEN || "";
 export const SESSION_SECRET = process.env.JALZA_SESSION_SECRET || "fallback-change-me";

@@ -1,4 +1,4 @@
-import { KNOWLEDGE_API_URL, KNOWLEDGE_API_FALLBACK, JALZA_API_TOKEN } from "@/lib/config";
+import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "@/lib/config";
 
 interface ServiceStatus {
   id: string;
@@ -73,7 +73,6 @@ export async function GET() {
   return Response.json({
     services,
     backend_url: KNOWLEDGE_API_URL,
-    fallback_url: KNOWLEDGE_API_FALLBACK || null,
     token_set: !!JALZA_API_TOKEN,
   });
 }

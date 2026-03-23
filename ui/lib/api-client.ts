@@ -1,10 +1,4 @@
-import {
-  KNOWLEDGE_API_URL,
-  KNOWLEDGE_API_FALLBACK,
-  JALZA_API_TOKEN,
-} from "./config";
-
-const BACKEND_TIMEOUT_MS = 10_000;
+import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "./config";
 
 function buildHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
@@ -16,65 +10,48 @@ function buildHeaders(extra?: HeadersInit): Headers {
   return headers;
 }
 
-async function timedFetch(
-  url: string,
-  options: RequestInit
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeoutId);
-    return res;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    throw err;
-  }
-}
-
-async function fetchWithFallback(
-  path: string,
-  options: RequestInit
-): Promise<Response> {
-  const urls: string[] = [];
-  if (KNOWLEDGE_API_FALLBACK) urls.push(KNOWLEDGE_API_FALLBACK);
-  urls.push(KNOWLEDGE_API_URL);
-
-  let lastError: Error | null = null;
-  for (const base of urls) {
-    try {
-      return await timedFetch(`${base}${path}`, options);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(
-        `[backendFetch] ${base}${path} failed: ${lastError.message}`
-      );
-    }
-  }
-  throw new Error(
-    `Backend unreachable on all URLs (${urls.join(", ")}): ${lastError?.message}`
-  );
-}
-
 export async function backendFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs?: number
 ): Promise<Response> {
-  return fetchWithFallback(path, { ...options, headers: buildHeaders(options.headers) });
+  const url = `${KNOWLEDGE_API_URL}${path}`;
+  if (timeoutMs) {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: buildHeaders(options.headers),
+        signal: controller.signal,
+      });
+      clearTimeout(tid);
+      return res;
+    } catch (err) {
+      clearTimeout(tid);
+      throw err;
+    }
+  }
+  return fetch(url, { ...options, headers: buildHeaders(options.headers) });
 }
 
 export async function backendPost(
   path: string,
-  body: unknown
+  body: unknown,
+  timeoutMs?: number
 ): Promise<Response> {
-  return backendFetch(path, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return backendFetch(
+    path,
+    { method: "POST", body: JSON.stringify(body) },
+    timeoutMs
+  );
 }
 
-export async function backendGet(path: string): Promise<Response> {
-  return fetchWithFallback(path, { headers: buildHeaders() });
+export async function backendGet(
+  path: string,
+  timeoutMs?: number
+): Promise<Response> {
+  return backendFetch(path, {}, timeoutMs);
 }
 
 export interface JalzaAIOptions {
