@@ -1,49 +1,63 @@
-import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "./config";
+import {
+  KNOWLEDGE_API_URL,
+  KNOWLEDGE_API_FALLBACK,
+  JALZA_API_TOKEN,
+} from "./config";
 
-const BACKEND_TIMEOUT_MS = 15_000;
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 1_000;
+const BACKEND_TIMEOUT_MS = 8_000;
 
-async function fetchWithRetry(
+function buildHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
+  headers.set("Content-Type", "application/json");
+  headers.set("Bypass-Tunnel-Reminder", "yes");
+  if (JALZA_API_TOKEN) {
+    headers.set("X-API-Token", JALZA_API_TOKEN);
+  }
+  return headers;
+}
+
+async function timedFetch(
   url: string,
-  options: RequestInit,
-  retries = MAX_RETRIES
+  options: RequestInit
 ): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return res;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+}
+
+async function fetchWithFallback(
+  path: string,
+  options: RequestInit
+): Promise<Response> {
+  const urls = [KNOWLEDGE_API_URL];
+  if (KNOWLEDGE_API_FALLBACK) urls.push(KNOWLEDGE_API_FALLBACK);
+
+  let lastError: Error | null = null;
+  for (const base of urls) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
-      const res = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      return res;
+      return await timedFetch(`${base}${path}`, options);
     } catch (err) {
-      const isLast = attempt === retries;
-      if (isLast) {
-        const reason = err instanceof Error ? err.message : String(err);
-        throw new Error(
-          `Backend unreachable after ${retries + 1} attempts (${url}): ${reason}`
-        );
-      }
-      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[backendFetch] ${base}${path} failed: ${lastError.message}`);
     }
   }
-  throw new Error("Unreachable");
+  throw new Error(
+    `Backend unreachable on all URLs (${urls.join(", ")}): ${lastError?.message}`
+  );
 }
 
 export async function backendFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  headers.set("Bypass-Tunnel-Reminder", "yes");
-  if (JALZA_API_TOKEN) {
-    headers.set("X-API-Token", JALZA_API_TOKEN);
-  }
-  return fetchWithRetry(`${KNOWLEDGE_API_URL}${path}`, { ...options, headers });
+  return fetchWithFallback(path, { ...options, headers: buildHeaders(options.headers) });
 }
 
 export async function backendPost(
@@ -57,14 +71,7 @@ export async function backendPost(
 }
 
 export async function backendGet(path: string): Promise<Response> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "Bypass-Tunnel-Reminder": "yes",
-  };
-  if (JALZA_API_TOKEN) {
-    headers["X-API-Token"] = JALZA_API_TOKEN;
-  }
-  return fetchWithRetry(`${KNOWLEDGE_API_URL}${path}`, { headers });
+  return fetchWithFallback(path, { headers: buildHeaders() });
 }
 
 export interface JalzaAIOptions {
