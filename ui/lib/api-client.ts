@@ -4,8 +4,7 @@ import {
   JALZA_API_TOKEN,
 } from "./config";
 
-const BACKEND_TIMEOUT_MS = 8_000;
-const MAX_RETRIES = 3;
+const BACKEND_TIMEOUT_MS = 10_000;
 
 function buildHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
@@ -37,24 +36,20 @@ async function fetchWithFallback(
   path: string,
   options: RequestInit
 ): Promise<Response> {
-  const urls = [KNOWLEDGE_API_URL];
+  const urls: string[] = [];
   if (KNOWLEDGE_API_FALLBACK) urls.push(KNOWLEDGE_API_FALLBACK);
+  urls.push(KNOWLEDGE_API_URL);
 
   let lastError: Error | null = null;
   for (const base of urls) {
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        return await timedFetch(`${base}${path}`, options);
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        if (attempt < MAX_RETRIES - 1) {
-          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-        }
-      }
+    try {
+      return await timedFetch(`${base}${path}`, options);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(
+        `[backendFetch] ${base}${path} failed: ${lastError.message}`
+      );
     }
-    console.warn(
-      `[backendFetch] ${base}${path} failed after ${MAX_RETRIES} retries: ${lastError?.message}`
-    );
   }
   throw new Error(
     `Backend unreachable on all URLs (${urls.join(", ")}): ${lastError?.message}`
