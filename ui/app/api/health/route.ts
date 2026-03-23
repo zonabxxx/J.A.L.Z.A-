@@ -20,8 +20,9 @@ async function checkService(
       latency: Date.now() - start,
       details: result.details,
     };
-  } catch {
-    return { status: "offline", latency: Date.now() - start };
+  } catch (err) {
+    const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    return { status: "offline", latency: Date.now() - start, details: errMsg };
   }
 }
 
