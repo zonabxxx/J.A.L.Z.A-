@@ -5,6 +5,7 @@ import {
 } from "./config";
 
 const BACKEND_TIMEOUT_MS = 8_000;
+const MAX_RETRIES = 3;
 
 function buildHeaders(extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
@@ -41,12 +42,19 @@ async function fetchWithFallback(
 
   let lastError: Error | null = null;
   for (const base of urls) {
-    try {
-      return await timedFetch(`${base}${path}`, options);
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[backendFetch] ${base}${path} failed: ${lastError.message}`);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await timedFetch(`${base}${path}`, options);
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
+      }
     }
+    console.warn(
+      `[backendFetch] ${base}${path} failed after ${MAX_RETRIES} retries: ${lastError?.message}`
+    );
   }
   throw new Error(
     `Backend unreachable on all URLs (${urls.join(", ")}): ${lastError?.message}`
