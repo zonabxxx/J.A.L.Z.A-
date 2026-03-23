@@ -1544,6 +1544,8 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                     "agent": body.get("agent", ""),
                     "enabled": True,
                     "notify": body.get("notify", True),
+                    "web_enabled": body.get("web_enabled", False),
+                    "youtube_channels": body.get("youtube_channels", []),
                     "last_run": None,
                 }
                 tasks.append(new_task)
@@ -1575,36 +1577,12 @@ class KnowledgeHandler(BaseHTTPRequestHandler):
                 if not task:
                     self._send_json({"error": "Task not found"}, 404)
                     return
-                import requests as req
-                from datetime import datetime as dt
                 try:
-                    messages = [{"role": "user", "content": task["prompt"]}]
-                    if task.get("agent") and task["agent"] in AGENTS:
-                        agent_cfg = AGENTS[task["agent"]]
-                        kb = KnowledgeBase(agent_cfg["name"])
-                        results = kb.search(task["prompt"], top_k=3)
-                        context = "\n".join(
-                            f"Zdroj: {r['title']}\n{r['content']}" for r in results
-                        )
-                        messages = [
-                            {"role": "system", "content": agent_cfg.get("system_prompt", "")},
-                            {"role": "user", "content": f"{context}\n\nÚLOHA: {task['prompt']}"},
-                        ]
-
-                    r = req.post(
-                        "http://localhost:11434/api/chat",
-                        json={"model": "jalza", "messages": messages, "stream": False},
-                        timeout=300,
-                    )
-                    result = r.json().get("message", {}).get("content", "Chyba")
-
-                    task["last_run"] = dt.now().strftime("%Y-%m-%d %H:%M")
-                    cfg["scheduled_tasks_v2"] = tasks
-                    save_config(cfg)
-
                     _init_task_results_db()
-                    _save_task_result(task["id"], task.get("name", ""), result)
-                    self._send_json({"status": "completed", "result": result[:500]})
+                    _run_scheduled_task(task)
+                    results_list = _get_task_results(1)
+                    last_result = results_list[0]["result"] if results_list else "Dokončené"
+                    self._send_json({"status": "completed", "result": last_result[:500]})
                 except Exception as e:
                     _init_task_results_db()
                     _save_task_result(task_id, task.get("name", ""), str(e), "error")
@@ -2620,20 +2598,154 @@ def _get_task_results(limit=20):
     conn.close()
     return [dict(r) for r in rows]
 
+def _fetch_youtube_rss(channel_url: str, max_items: int = 5) -> list:
+    """Fetch latest videos from a YouTube channel RSS feed."""
+    import requests as req
+    import re
+    try:
+        channel_id = None
+        if "channel/" in channel_url:
+            channel_id = channel_url.split("channel/")[-1].split("/")[0].split("?")[0]
+        elif "@" in channel_url:
+            handle = channel_url.split("@")[-1].split("/")[0].split("?")[0]
+            page = req.get(f"https://www.youtube.com/@{handle}", timeout=10,
+                          headers={"User-Agent": "Mozilla/5.0"})
+            m = re.search(r'"channelId":"(UC[^"]+)"', page.text)
+            if m:
+                channel_id = m.group(1)
+        if not channel_id:
+            page = req.get(channel_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            m = re.search(r'"channelId":"(UC[^"]+)"', page.text)
+            if m:
+                channel_id = m.group(1)
+
+        if not channel_id:
+            return []
+
+        feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+        resp = req.get(feed_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return []
+
+        entries = []
+        items = resp.text.split("<entry>")[1:max_items + 1]
+        for item in items:
+            title_m = re.search(r"<title>(.*?)</title>", item)
+            link_m = re.search(r'<link rel="alternate" href="(.*?)"', item)
+            pub_m = re.search(r"<published>(.*?)</published>", item)
+            desc_m = re.search(r"<media:description>(.*?)</media:description>", item, re.DOTALL)
+            entries.append({
+                "title": title_m.group(1) if title_m else "?",
+                "url": link_m.group(1) if link_m else "",
+                "date": pub_m.group(1)[:10] if pub_m else "",
+                "description": (desc_m.group(1)[:500] if desc_m else "")
+            })
+        return entries
+    except Exception as e:
+        logger.warning(f"YouTube RSS fetch failed for {channel_url}: {e}")
+        return []
+
+
+def _web_search_for_task(query: str, max_results: int = 8) -> str:
+    """Search the web and return formatted results for task context."""
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+        if not results:
+            return ""
+        lines = []
+        for r in results:
+            lines.append(f"**{r.get('title', '')}**")
+            lines.append(f"URL: {r.get('href', '')}")
+            lines.append(f"{r.get('body', '')}")
+            lines.append("")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Web search failed for task: {e}")
+        return ""
+
+
 def _run_scheduled_task(task):
     import requests as req
     try:
-        messages = [{"role": "user", "content": task["prompt"]}]
+        prompt = task["prompt"]
+        web_enabled = task.get("web_enabled", False)
+        youtube_channels = task.get("youtube_channels", [])
+        web_context = ""
+
+        if web_enabled or youtube_channels:
+            parts = []
+
+            for ch_url in youtube_channels:
+                videos = _fetch_youtube_rss(ch_url, max_items=5)
+                if videos:
+                    parts.append(f"--- YouTube kanál: {ch_url} ---")
+                    for v in videos:
+                        parts.append(f"📺 {v['title']} ({v['date']})")
+                        parts.append(f"   {v['url']}")
+                        if v['description']:
+                            parts.append(f"   {v['description'][:200]}")
+                        parts.append("")
+
+            if web_enabled:
+                search_results = _web_search_for_task(prompt)
+                if search_results:
+                    parts.append("--- Výsledky z webu ---")
+                    parts.append(search_results)
+
+            web_context = "\n".join(parts)
+
+        messages = [{"role": "user", "content": prompt}]
         agent_key = task.get("agent", "")
+        use_gemini = web_enabled or bool(youtube_channels)
+
         if agent_key and agent_key in AGENTS:
             agent_cfg = AGENTS[agent_key]
             kb = KnowledgeBase(agent_cfg["name"])
-            results = kb.search(task["prompt"], top_k=3)
+            results = kb.search(prompt, top_k=3)
             context = "\n".join(f"Zdroj: {r['title']}\n{r['content']}" for r in results)
+            full_context = f"{context}\n\n{web_context}" if web_context else context
             messages = [
                 {"role": "system", "content": agent_cfg.get("system_prompt", "")},
-                {"role": "user", "content": f"{context}\n\nÚLOHA: {task['prompt']}"},
+                {"role": "user", "content": f"{full_context}\n\nÚLOHA: {prompt}"},
             ]
+        elif web_context:
+            messages = [
+                {"role": "system", "content": "Si J.A.L.Z.A., inteligentný asistent. Odpovedáš VŽDY po SLOVENSKY. Tvoja úloha je analyzovať poskytnuté dáta z webu/YouTube a vytvoriť prehľadné zhrnutie. VŽDY uveď pôvodné linky/URL. Buď stručný ale informatívny."},
+                {"role": "user", "content": f"AKTUÁLNE DÁTA Z WEBU:\n\n{web_context}\n\nÚLOHA: {prompt}"},
+            ]
+
+        if use_gemini:
+            gemini_key = os.environ.get("GEMINI_API_KEY", "")
+            if gemini_key:
+                try:
+                    body = {
+                        "model": "gemini-2.5-flash",
+                        "messages": messages,
+                        "max_tokens": 2048,
+                        "temperature": 0.3,
+                        "stream": False,
+                    }
+                    resp = req.post(
+                        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                        json=body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {gemini_key}",
+                        },
+                        timeout=120,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        if result:
+                            _save_task_result(task["id"], task.get("name", ""), result)
+                            _update_task_last_run(task["id"])
+                            logger.info(f"Task '{task.get('name')}' completed via Gemini: {result[:100]}")
+                            return
+                except Exception as e:
+                    logger.warning(f"Gemini failed for task, falling back to Ollama: {e}")
 
         r = req.post(
             "http://localhost:11434/api/chat",
@@ -2642,18 +2754,21 @@ def _run_scheduled_task(task):
         )
         result = r.json().get("message", {}).get("content", "Chyba")
         _save_task_result(task["id"], task.get("name", ""), result)
-
-        cfg = load_config()
-        for t in cfg.get("scheduled_tasks_v2", []):
-            if t["id"] == task["id"]:
-                t["last_run"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-                break
-        save_config(cfg)
+        _update_task_last_run(task["id"])
 
         logger.info(f"Task '{task.get('name')}' completed: {result[:100]}")
     except Exception as e:
         _save_task_result(task["id"], task.get("name", ""), str(e), "error")
         logger.error(f"Task '{task.get('name')}' failed: {e}")
+
+
+def _update_task_last_run(task_id: str):
+    cfg = load_config()
+    for t in cfg.get("scheduled_tasks_v2", []):
+        if t["id"] == task_id:
+            t["last_run"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+            break
+    save_config(cfg)
 
 
 def _scheduler_loop():

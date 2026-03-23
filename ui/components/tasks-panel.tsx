@@ -10,6 +10,8 @@ interface ScheduledTask {
   enabled: boolean;
   last_run?: string;
   notify: boolean;
+  web_enabled?: boolean;
+  youtube_channels?: string[];
 }
 
 interface TaskResult {
@@ -50,6 +52,8 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
     schedule: "daily_morning",
     agent: "",
     notify: true,
+    web_enabled: false,
+    youtube_channels: "",
   });
 
   const load = async () => {
@@ -90,13 +94,26 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
     if (!newTask.name || !newTask.prompt) return;
     setSaving(true);
     try {
+      const channels = newTask.youtube_channels
+        .split("\n")
+        .map(c => c.trim())
+        .filter(c => c.length > 0);
       await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", ...newTask }),
+        body: JSON.stringify({
+          action: "create",
+          name: newTask.name,
+          prompt: newTask.prompt,
+          schedule: newTask.schedule,
+          agent: newTask.agent,
+          notify: newTask.notify,
+          web_enabled: newTask.web_enabled,
+          youtube_channels: channels,
+        }),
       });
       setShowCreate(false);
-      setNewTask({ name: "", prompt: "", schedule: "daily_morning", agent: "", notify: true });
+      setNewTask({ name: "", prompt: "", schedule: "daily_morning", agent: "", notify: true, web_enabled: false, youtube_channels: "" });
       load();
     } finally {
       setSaving(false);
@@ -237,7 +254,21 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
               </select>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={newTask.web_enabled}
+                onChange={(e) =>
+                  setNewTask({ ...newTask, web_enabled: e.target.checked })
+                }
+                className="rounded"
+              />
+              <span className="flex items-center gap-1">
+                🌐 Web search
+                <span className="text-[10px] text-zinc-500">(AI + aktuálne dáta)</span>
+              </span>
+            </label>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -249,6 +280,18 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
               />
               Notifikovať cez Telegram
             </label>
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500 block mb-1">
+              📺 YouTube kanály <span className="text-zinc-600">(jeden na riadok, voliteľné)</span>
+            </label>
+            <textarea
+              placeholder={"https://www.youtube.com/@zaujalo_ma\nhttps://www.youtube.com/@FantasticFuture\nhttps://www.youtube.com/@Fireship"}
+              value={newTask.youtube_channels}
+              onChange={(e) => setNewTask({ ...newTask, youtube_channels: e.target.value })}
+              rows={3}
+              className="w-full bg-zinc-800 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono text-xs"
+            />
           </div>
           <div className="flex gap-2">
             <button
@@ -302,6 +345,16 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
                   {task.agent && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-600/20 text-amber-400">
                       📚 {task.agent}
+                    </span>
+                  )}
+                  {task.web_enabled && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-600/20 text-blue-400">
+                      🌐 Web
+                    </span>
+                  )}
+                  {task.youtube_channels && task.youtube_channels.length > 0 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-600/20 text-red-400">
+                      📺 {task.youtube_channels.length} kanálov
                     </span>
                   )}
                 </div>
@@ -377,19 +430,17 @@ export default function TasksPanel({ onMenuToggle, onBack }: Props) {
         </h3>
         <div className="space-y-1.5 text-sm text-zinc-500">
           <p>
-            📧 <em>&quot;Skontroluj emaily a pošli mi zhrnutie dôležitých cez Telegram&quot;</em>{" "}
+            🤖 <em>&quot;Zhrň najnovšie AI novinky zo sveta&quot;</em> + 📺 YouTube kanály — denne ráno
+          </p>
+          <p>
+            📧 <em>&quot;Skontroluj emaily a pošli mi zhrnutie dôležitých&quot;</em>{" "}
             — denne ráno
           </p>
           <p>
-            📚 <em>&quot;Skontroluj či sa nezmenili daňové zákony na slov-lex.sk&quot;</em>{" "}
-            — raz týždenne
+            🌐 <em>&quot;Aké sú najnovšie trendy v 3D tlači?&quot;</em> + Web search — raz týždenne
           </p>
           <p>
-            🔍 <em>&quot;Nájdi nové 3D modely na Printables pre ADSUN&quot;</em>{" "}
-            — denne
-          </p>
-          <p>
-            💰 <em>&quot;Zhrň aktuálne ceny kryptomien BTC, ETH, SOL&quot;</em>{" "}
+            💰 <em>&quot;Zhrň aktuálne ceny kryptomien BTC, ETH, SOL&quot;</em> + 🌐 Web{" "}
             — každú hodinu
           </p>
         </div>
