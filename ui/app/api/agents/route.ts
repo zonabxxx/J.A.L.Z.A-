@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { backendGet, backendPost } from "@/lib/api-client";
+import { KNOWLEDGE_API_URL } from "@/lib/config";
 
 export async function GET() {
   try {
     const res = await backendGet("/agents");
     const data = await res.json();
     return Response.json(data);
-  } catch {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    console.error(`[agents GET] Backend error (${KNOWLEDGE_API_URL}):`, msg);
     return Response.json({}, { status: 502 });
   }
 }

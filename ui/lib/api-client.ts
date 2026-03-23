@@ -1,5 +1,38 @@
 import { KNOWLEDGE_API_URL, JALZA_API_TOKEN } from "./config";
 
+const BACKEND_TIMEOUT_MS = 15_000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1_000;
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = MAX_RETRIES
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return res;
+    } catch (err) {
+      const isLast = attempt === retries;
+      if (isLast) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Backend unreachable after ${retries + 1} attempts (${url}): ${reason}`
+        );
+      }
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+    }
+  }
+  throw new Error("Unreachable");
+}
+
 export async function backendFetch(
   path: string,
   options: RequestInit = {}
@@ -10,7 +43,7 @@ export async function backendFetch(
   if (JALZA_API_TOKEN) {
     headers.set("X-API-Token", JALZA_API_TOKEN);
   }
-  return fetch(`${KNOWLEDGE_API_URL}${path}`, { ...options, headers });
+  return fetchWithRetry(`${KNOWLEDGE_API_URL}${path}`, { ...options, headers });
 }
 
 export async function backendPost(
@@ -25,12 +58,13 @@ export async function backendPost(
 
 export async function backendGet(path: string): Promise<Response> {
   const headers: Record<string, string> = {
+    "Content-Type": "application/json",
     "Bypass-Tunnel-Reminder": "yes",
   };
   if (JALZA_API_TOKEN) {
     headers["X-API-Token"] = JALZA_API_TOKEN;
   }
-  return fetch(`${KNOWLEDGE_API_URL}${path}`, { headers });
+  return fetchWithRetry(`${KNOWLEDGE_API_URL}${path}`, { headers });
 }
 
 export interface JalzaAIOptions {

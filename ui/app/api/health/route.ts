@@ -69,5 +69,9 @@ export async function GET() {
     { id: "gemini", name: "Google Gemini", ...checks[2] },
   ];
 
-  return Response.json({ services });
+  return Response.json({
+    services,
+    backend_url: KNOWLEDGE_API_URL,
+    token_set: !!JALZA_API_TOKEN,
+  });
 }
