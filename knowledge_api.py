@@ -2603,47 +2603,60 @@ def _fetch_youtube_rss(channel_url: str, max_items: int = 5) -> list:
     import requests as req
     import re
     try:
+        session = req.Session()
+        session.cookies.set("SOCS", "CAISHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg", domain=".youtube.com")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
         channel_id = None
         if "channel/" in channel_url:
             channel_id = channel_url.split("channel/")[-1].split("/")[0].split("?")[0]
-        elif "@" in channel_url:
-            handle = channel_url.split("@")[-1].split("/")[0].split("?")[0]
-            page = req.get(f"https://www.youtube.com/@{handle}", timeout=10,
-                          headers={"User-Agent": "Mozilla/5.0"})
-            m = re.search(r'"channelId":"(UC[^"]+)"', page.text)
-            if m:
-                channel_id = m.group(1)
-        if not channel_id:
-            page = req.get(channel_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-            m = re.search(r'"channelId":"(UC[^"]+)"', page.text)
-            if m:
-                channel_id = m.group(1)
+        else:
+            page = session.get(channel_url, timeout=10, headers=headers)
+            rss_m = re.search(r'rssUrl.*?"(https://www\.youtube\.com/feeds/videos\.xml\?channel_id=[^"]+)"', page.text)
+            if rss_m:
+                feed_url = rss_m.group(1)
+                resp = session.get(feed_url, timeout=10, headers=headers)
+                if resp.status_code == 200:
+                    return _parse_youtube_feed(resp.text, max_items)
+
+            ext_m = re.search(r'"externalId":"(UC[^"]+)"', page.text)
+            if ext_m:
+                channel_id = ext_m.group(1)
 
         if not channel_id:
+            logger.warning(f"YouTube: could not find channel ID for {channel_url}")
             return []
 
         feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-        resp = req.get(feed_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        resp = session.get(feed_url, timeout=10, headers=headers)
         if resp.status_code != 200:
             return []
 
-        entries = []
-        items = resp.text.split("<entry>")[1:max_items + 1]
-        for item in items:
-            title_m = re.search(r"<title>(.*?)</title>", item)
-            link_m = re.search(r'<link rel="alternate" href="(.*?)"', item)
-            pub_m = re.search(r"<published>(.*?)</published>", item)
-            desc_m = re.search(r"<media:description>(.*?)</media:description>", item, re.DOTALL)
-            entries.append({
-                "title": title_m.group(1) if title_m else "?",
-                "url": link_m.group(1) if link_m else "",
-                "date": pub_m.group(1)[:10] if pub_m else "",
-                "description": (desc_m.group(1)[:500] if desc_m else "")
-            })
-        return entries
+        return _parse_youtube_feed(resp.text, max_items)
     except Exception as e:
         logger.warning(f"YouTube RSS fetch failed for {channel_url}: {e}")
         return []
+
+
+def _parse_youtube_feed(xml_text: str, max_items: int = 5) -> list:
+    import re
+    entries = []
+    items = xml_text.split("<entry>")[1:max_items + 1]
+    for item in items:
+        title_m = re.search(r"<title>(.*?)</title>", item)
+        link_m = re.search(r'<link rel="alternate" href="(.*?)"', item)
+        pub_m = re.search(r"<published>(.*?)</published>", item)
+        desc_m = re.search(r"<media:description>(.*?)</media:description>", item, re.DOTALL)
+        entries.append({
+            "title": title_m.group(1) if title_m else "?",
+            "url": link_m.group(1) if link_m else "",
+            "date": pub_m.group(1)[:10] if pub_m else "",
+            "description": (desc_m.group(1)[:500] if desc_m else "")
+        })
+    return entries
 
 
 def _web_search_for_task(query: str, max_results: int = 8) -> str:
